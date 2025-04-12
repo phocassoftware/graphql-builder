@@ -25,7 +25,7 @@
 	<artifactId>graphql-builder</artifactId>
 
 	<properties>
-		<junit.jupiter.version>5.12.1</junit.jupiter.version>
+		<junit.jupiter.version>5.12.2</junit.jupiter.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<jackson.version>2.18.3</jackson.version>
 		<graphql.version>22.3</graphql.version>
