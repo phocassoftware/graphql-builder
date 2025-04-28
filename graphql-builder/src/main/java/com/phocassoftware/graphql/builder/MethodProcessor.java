@@ -44,10 +44,10 @@ class MethodProcessor {
 	private final GraphQLObjectType.Builder graphMutations;
 	private final GraphQLObjectType.Builder graphSubscriptions;
 
-	public MethodProcessor(DataFetcherRunner dataFetcherRunner, EntityProcessor entityProcessor, DirectivesSchema diretives) {
+	public MethodProcessor(DataFetcherRunner dataFetcherRunner, EntityProcessor entityProcessor, DirectivesSchema directives) {
 		this.dataFetcherRunner = dataFetcherRunner;
 		this.entityProcessor = entityProcessor;
-		this.directives = diretives;
+		this.directives = directives;
 		this.codeRegistry = GraphQLCodeRegistry.newCodeRegistry();
 
 		this.graphQuery = GraphQLObjectType.newObject();
@@ -58,7 +58,7 @@ class MethodProcessor {
 		graphSubscriptions.name("Subscriptions");
 	}
 
-	void process(AuthorizerSchema authorizer, Method method) throws ReflectiveOperationException {
+	void process(AuthorizerSchema authorizer, Method method) {
 		if (!Modifier.isStatic(method.getModifiers())) {
 			throw new RuntimeException("End point must be a static method");
 		}

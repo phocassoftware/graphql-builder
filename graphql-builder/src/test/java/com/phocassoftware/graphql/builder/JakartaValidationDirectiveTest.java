@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class JakartaValidationDirectiveTest {
 	@Test
 	void testJakartaSizeAnnotationAddedAsDirective() {
-		GraphQL schema = GraphQL.newGraphQL(SchemaBuilder.build("com.fleetpin.graphql.builder.type.directive")).build();
+		GraphQL schema = GraphQL.newGraphQL(SchemaBuilder.build("com.phocassoftware.graphql.builder.type.directive")).build();
 		var name = schema.getGraphQLSchema().getFieldDefinition(FieldCoordinates.coordinates(schema.getGraphQLSchema().getMutationType(), "setName"));
 		var directive = name.getArgument("name").getAppliedDirective("Size");
 		var argument = directive.getArgument("min");
@@ -28,7 +28,7 @@ class JakartaValidationDirectiveTest {
 
 	@Test
 	void testJakartaSizeDirectiveArgumentDefinition() {
-		Map<String, Object> response = execute("query IntrospectionQuery { __schema { directives { name locations args { name } } } }").getData();
+		Map<String, Object> response = execute("query IntrospectionQuery { __schema { directives { name locations args { name } } } }", null).getData();
 		List<LinkedHashMap<String, Object>> dir = (List<LinkedHashMap<String, Object>>) ((Map<String, Object>) response.get("__schema")).get("directives");
 		LinkedHashMap<String, Object> constraint = dir.stream().filter(map -> map.get("name").equals("Size")).collect(Collectors.toList()).get(0);
 
@@ -43,12 +43,24 @@ class JakartaValidationDirectiveTest {
 		assertEquals("{name=groups}", ((List<Object>) constraint.get("args")).get(4).toString());
 	}
 
-	private ExecutionResult execute(String query) {
-		GraphQLSchema preSchema = SchemaBuilder.builder().classpath("com.fleetpin.graphql.builder.type.directive").build().build();
+	@Test
+	void testJakartaValidationIsApplied() {
+		var name = "Roger";
+		Map<String, String> response = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name)).getData();
+		var result = response.get("setName");
+
+		assertEquals(name, result);
+	}
+
+	private ExecutionResult execute(String query, Map<String, Object> variables) {
+		GraphQLSchema preSchema = SchemaBuilder.builder().classpath("com.phocassoftware.graphql.builder.type.directive").build().build();
 		GraphQL schema = GraphQL.newGraphQL(new IntrospectionWithDirectivesSupport().apply(preSchema)).build();
 
 		var input = ExecutionInput.newExecutionInput();
 		input.query(query);
+		if (variables != null) {
+			input.variables(variables);
+		}
 		return schema.execute(input);
 	}
 }
