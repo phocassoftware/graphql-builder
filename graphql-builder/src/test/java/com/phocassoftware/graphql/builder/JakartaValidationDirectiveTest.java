@@ -28,6 +28,16 @@ class JakartaValidationDirectiveTest {
 	}
 
 	@Test
+	void testJakartaSizeAnnotationAddedAsDirectiveOnARecord() {
+		GraphQL schema = GraphQL.newGraphQL(SchemaBuilder.build("com.phocassoftware.graphql.builder.type.directive.record")).build();
+		var name = schema.getGraphQLSchema().getFieldDefinition(FieldCoordinates.coordinates(schema.getGraphQLSchema().getMutationType(), "setName"));
+		var directive = name.getArgument("name").getAppliedDirective("Size");
+		var argument = directive.getArgument("min");
+		var min = argument.getValue();
+		assertEquals(3, min);
+	}
+
+	@Test
 	void testJakartaSizeDirectiveArgumentDefinition() {
 		Map<String, Object> response = execute("query IntrospectionQuery { __schema { directives { name locations args { name } } } }", null).getData();
 		List<LinkedHashMap<String, Object>> dir = (List<LinkedHashMap<String, Object>>) ((Map<String, Object>) response.get("__schema")).get("directives");
