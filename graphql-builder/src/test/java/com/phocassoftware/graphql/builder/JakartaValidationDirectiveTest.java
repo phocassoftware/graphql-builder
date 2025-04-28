@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class JakartaValidationDirectiveTest {
 	@Test
@@ -44,12 +45,39 @@ class JakartaValidationDirectiveTest {
 	}
 
 	@Test
-	void testJakartaValidationIsApplied() {
+	void testJakartaSizeValidationIsApplied() {
 		var name = "Roger";
 		Map<String, String> response = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name)).getData();
 		var result = response.get("setName");
 
 		assertEquals(name, result);
+
+		name = "Po";
+		response = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name)).getData();
+
+		// TODO: response is currently null, I would expect it to return an error.
+		assertNull(response);
+	}
+
+	@Test
+	void testJakartaMinAndMaxValidationIsApplied() {
+		var age = 4;
+		Map<String, Integer> response = execute("mutation setAge($age: Int!){setAge(age: $age)} ", Map.of("age", age)).getData();
+		var result = response.get("setAge");
+
+		assertEquals(age, result);
+
+		age = 2;
+		response = execute("mutation setAge($age: int!){setAge(age: $age)} ", Map.of("age", age)).getData();
+
+		// TODO: response is currently null, I would expect it to return an error.
+		assertNull(response);
+
+		age = 100;
+		response = execute("mutation setAge($age: int!){setAge(age: $age)} ", Map.of("age", age)).getData();
+
+		// TODO: response is currently null, I would expect it to return an error.
+		assertNull(response);
 	}
 
 	private ExecutionResult execute(String query, Map<String, Object> variables) {

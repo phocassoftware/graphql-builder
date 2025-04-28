@@ -14,6 +14,8 @@ package com.phocassoftware.graphql.builder.type.directive;
 import com.phocassoftware.graphql.builder.annotations.Entity;
 import com.phocassoftware.graphql.builder.annotations.Mutation;
 import com.phocassoftware.graphql.builder.annotations.Query;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
 @Entity
@@ -46,6 +48,11 @@ public class Cat {
 	@Mutation
 	public static String setName(@Size(min = 3) String name) {
 		return name;
+	}
+
+	@Mutation
+	public static int setAge(@Min(value = 3) @Max(value = 99) int age) {
+		return age;
 	}
 
 	@Query
