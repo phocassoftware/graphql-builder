@@ -97,6 +97,7 @@ jobs:
           mvn release:perform -DreleaseVersion=${release_version} \
           -DdevelopmentVersion=${release_version}-SNAPSHOT \
           -Dusername=${{ secrets.GITHUB_TOKEN }} \
+          -Darguments="-DskipTests" \
           -P sonatype -DscmForceUpdate=true
         env:
           release_version: ${{ steps.pick_release_version.outputs.version }}
