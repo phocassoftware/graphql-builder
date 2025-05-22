@@ -15,7 +15,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.phocassoftware</groupId>
 	<artifactId>graphql-builder-parent</artifactId>
-	<version>1.0.14</version>
+	<version>1.0.14-SNAPSHOT</version>
 	<name>GraphQL Builder</name>
 	<description>library to make working with dynamodb and graphql easy as well as building a graphql schema from a model using reflection</description>
 	<url>https://github.com/phocassoftware/graphql-builder</url>
@@ -38,7 +38,7 @@
 		<url>https://github.com/phocassoftware/graphql-builder</url>
 		<connection>scm:git:https://github.com/phocassoftware/graphql-builder.git</connection>
 		<developerConnection>scm:git:https://github.com/phocassoftware/graphql-builder.git</developerConnection>
-		<tag>graphql-builder-parent-1.0.14</tag>
+		<tag>HEAD</tag>
 	</scm>
 
 	<developers>
