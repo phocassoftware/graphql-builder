@@ -1,43 +1,122 @@
 name: Release
+
 permissions:
   contents: write
-on: workflow_dispatch
+  packages: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseType:
+        type: choice
+        description: "Release type"
+        required: true
+        default: minor
+        options:
+          - patch
+          - minor
+          - major
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/cache@v4
+      - name: Setup cache
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Set up JDK 21
+
+      - name: Setup JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: 21
           distribution: zulu
-      - uses: whelk-io/maven-settings-xml-action@v22
+          cache: maven
+
+      - name: Setup Maven
+        uses: whelk-io/maven-settings-xml-action@v22
         with:
           servers: >
             [
               { "id": "central", "username": "${{ secrets.MAVEN_CENTRAL_TOKEN_USER }}", "password": "${{ secrets.MAVEN_CENTRAL_TOKEN_PASS }}" }
             ]
 
-      - run: git config --global user.name phocasadmin; git config --global user.email admin+maven@phocassoftware.com
+      - name: Get current development version
+        id: get_version
+        run: |
+          VERSION=$( mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-SNAPSHOT//' )
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: add key
+      - name: Generate versions
+        id: generate_versions
+        uses: WyriHaximus/github-action-next-semvers@v1.2.1
+        with:
+          version: ${{ steps.get_version.outputs.version }}
+
+      - name: Pick release version
+        id: pick_release_version
+        run: |
+          VERSION=$(
+            case ${{ github.event.inputs.releaseType }} in
+              ("minor") echo "${{ steps.generate_versions.outputs.minor }}" ;;
+              ("major") echo "${{ steps.generate_versions.outputs.major }}" ;;
+              ("patch") echo "${{ steps.generate_versions.outputs.patch }}" ;;
+            esac
+          )
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Setup Git
+        run: |
+          git config --global user.name phocasadmin;
+          git config --global user.email admin+maven@phocassoftware.com
+
+      - name: Setup key
         run: |
           echo  "${{ secrets.MAVEN_PRIVATE_KEY }}" | base64 -d > private.key
           gpg --batch --import ./private.key
           rm ./private.key
           gpg --list-secret-keys --keyid-format LONG
 
-      - name: prepare
+      - name: Maven prepare release
         run: |
-          mvn release:prepare -Dusername=${{ secrets.GITHUB_TOKEN }} -P sonatype -DscmForceUpdate=true
-      - name: release
+          mvn release:prepare -DreleaseVersion=${release_version} \
+          -DdevelopmentVersion=${release_version}-SNAPSHOT \
+          -Dusername=${{ secrets.GITHUB_TOKEN }} \
+          -P sonatype -DscmForceUpdate=true
+        env:
+          release_version: ${{ steps.pick_release_version.outputs.version }}
+
+      - name: Maven perform release
         run: |
-          mvn release:perform -Dusername=${{ secrets.GITHUB_TOKEN }} -P sonatype -DscmForceUpdate=true
+          mvn release:perform -DreleaseVersion=${release_version} \
+          -DdevelopmentVersion=${release_version}-SNAPSHOT \
+          -Dusername=${{ secrets.GITHUB_TOKEN }} \
+          -P sonatype -DscmForceUpdate=true
+        env:
+          release_version: ${{ steps.pick_release_version.outputs.version }}
+
+      - name: Create GitHub release
+        run: |
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          prior_release_tag=$(git tag --list "${repo_name}-*" --sort=-creatordate | sed -n '2p')
+          if [ -z "$prior_release_tag" ]; then
+            gh release create "${repo_name}-${release_version}" \
+              --repo="$GITHUB_REPOSITORY" \
+              --title="${release_version}" \
+              --generate-notes
+          else
+            gh release create "${repo_name}-${release_version}" \
+              --repo="$GITHUB_REPOSITORY" \
+              --title="${release_version}" \
+              --generate-notes \
+              --notes-start-tag "${prior_release_tag}"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          release_version: ${{ steps.pick_release_version.outputs.version }}
