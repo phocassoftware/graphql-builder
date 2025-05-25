@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 class JakartaValidationDirectiveTest {
 	@Test
@@ -63,10 +62,9 @@ class JakartaValidationDirectiveTest {
 		assertEquals(name, result);
 
 		name = "Po";
-		response = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name)).getData();
+		var error = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name)).getErrors().getFirst();
 
-		// TODO: response is currently null, I would expect it to return an error.
-		assertNull(response);
+		assertEquals("size must be between 3 and 2147483647", error.getMessage());
 	}
 
 	@Test
@@ -78,16 +76,14 @@ class JakartaValidationDirectiveTest {
 		assertEquals(age, result);
 
 		age = 2;
-		response = execute("mutation setAge($age: int!){setAge(age: $age)} ", Map.of("age", age)).getData();
+		var error = execute("mutation setAge($age: Int!){setAge(age: $age)} ", Map.of("age", age)).getErrors().getFirst();
 
-		// TODO: response is currently null, I would expect it to return an error.
-		assertNull(response);
+		assertEquals("must be greater than or equal to 3", error.getMessage());
 
 		age = 100;
-		response = execute("mutation setAge($age: int!){setAge(age: $age)} ", Map.of("age", age)).getData();
+		error = execute("mutation setAge($age: Int!){setAge(age: $age)} ", Map.of("age", age)).getErrors().getFirst();
 
-		// TODO: response is currently null, I would expect it to return an error.
-		assertNull(response);
+		assertEquals("must be less than or equal to 99", error.getMessage());
 	}
 
 	private ExecutionResult execute(String query, Map<String, Object> variables) {

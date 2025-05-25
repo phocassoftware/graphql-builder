@@ -12,17 +12,21 @@
 package com.phocassoftware.graphql.builder;
 
 import com.phocassoftware.graphql.builder.annotations.*;
+import graphql.scalars.ExtendedScalars;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchema;
-import graphql.scalars.ExtendedScalars;
-import jakarta.validation.Constraint;
-import org.reflections.Reflections;
-import org.reflections.scanners.Scanners;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import jakarta.validation.Constraint;
+import org.reflections.Reflections;
+import org.reflections.scanners.Scanners;
 
 import static org.reflections.scanners.Scanners.SubTypes;
 

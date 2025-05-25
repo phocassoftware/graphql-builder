@@ -21,8 +21,16 @@ import com.phocassoftware.graphql.builder.annotations.Subscription;
 import graphql.GraphQLContext;
 import graphql.GraphQLError;
 import graphql.execution.DataFetcherResult;
-import graphql.schema.*;
+import graphql.schema.DataFetcher;
+import graphql.schema.DataFetchingEnvironment;
+import graphql.schema.FieldCoordinates;
+import graphql.schema.GraphQLAppliedDirective;
+import graphql.schema.GraphQLAppliedDirectiveArgument;
+import graphql.schema.GraphQLArgument;
+import graphql.schema.GraphQLCodeRegistry;
+import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLFieldDefinition.Builder;
+import graphql.schema.GraphQLObjectType;
 import graphql.validation.rules.ValidationRules;
 
 import java.lang.annotation.Annotation;
@@ -151,9 +159,7 @@ class MethodProcessor {
 			resolvers[i] = buildResolver(name, argMeta, parameter.getAnnotations());
 		}
 
-		ValidationRules validationRules = ValidationRules
-			.newValidationRules()
-			.build();
+		ValidationRules validationRules = ValidationRules.newValidationRules().build();
 
 		DataFetcher<?> fetcher = env -> {
 			try {

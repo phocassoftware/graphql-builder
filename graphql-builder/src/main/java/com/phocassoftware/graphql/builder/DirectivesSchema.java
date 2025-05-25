@@ -51,11 +51,9 @@ class DirectivesSchema {
 		this.jakartaDirectives = jakartaDirectives;
 	}
 
-	//TODO:mess of exceptions
+	// TODO:mess of exceptions
 	public static DirectivesSchema build(
-		List<RestrictTypeFactory<?>> globalDirectives,
-		Set<Class<?>> directiveTypes,
-		Set<Class<?>> jakartaDirectiveTypes
+		List<RestrictTypeFactory<?>> globalDirectives, Set<Class<?>> directiveTypes, Set<Class<?>> jakartaDirectiveTypes
 	) throws ReflectiveOperationException {
 		Map<Class<? extends Annotation>, DirectiveCaller<?>> targets = new HashMap<>();
 
