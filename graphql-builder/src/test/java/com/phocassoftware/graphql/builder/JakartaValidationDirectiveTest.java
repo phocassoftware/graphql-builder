@@ -38,7 +38,7 @@ class JakartaValidationDirectiveTest {
 
 	@Test
 	void testJakartaSizeDirectiveArgumentDefinition() {
-		Map<String, Object> response = execute("query IntrospectionQuery { __schema { directives { name locations args { name } } } }", null).getData();
+		Map<String, Object> response = execute("query IntrospectionQuery { __schema { directives { name locations args { name } } } }", null, true).getData();
 		List<LinkedHashMap<String, Object>> dir = (List<LinkedHashMap<String, Object>>) ((Map<String, Object>) response.get("__schema")).get("directives");
 		LinkedHashMap<String, Object> constraint = dir.stream().filter(map -> map.get("name").equals("Size")).collect(Collectors.toList()).get(0);
 
@@ -56,38 +56,49 @@ class JakartaValidationDirectiveTest {
 	@Test
 	void testJakartaSizeValidationIsApplied() {
 		var name = "Roger";
-		Map<String, String> response = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name)).getData();
+		Map<String, String> response = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name), true).getData();
 		var result = response.get("setName");
 
 		assertEquals(name, result);
 
 		name = "Po";
-		var error = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name)).getErrors().getFirst();
+		var error = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name), true).getErrors().getFirst();
 
 		assertEquals("size must be between 3 and 2147483647", error.getMessage());
 	}
 
 	@Test
+	void testJakartaSizeValidationIsNotAppliedWhenFlagIsFalse() {
+		var name = "Po";
+		Map<String, String> response = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name), false).getData();
+		var result = response.get("setName");
+
+		assertEquals(name, result);
+	}
+
+	@Test
 	void testJakartaMinAndMaxValidationIsApplied() {
 		var age = 4;
-		Map<String, Integer> response = execute("mutation setAge($age: Int!){setAge(age: $age)} ", Map.of("age", age)).getData();
+		Map<String, Integer> response = execute("mutation setAge($age: Int!){setAge(age: $age)} ", Map.of("age", age), true).getData();
 		var result = response.get("setAge");
 
 		assertEquals(age, result);
 
 		age = 2;
-		var error = execute("mutation setAge($age: Int!){setAge(age: $age)} ", Map.of("age", age)).getErrors().getFirst();
+		var error = execute("mutation setAge($age: Int!){setAge(age: $age)} ", Map.of("age", age), true).getErrors().getFirst();
 
 		assertEquals("must be greater than or equal to 3", error.getMessage());
 
 		age = 100;
-		error = execute("mutation setAge($age: Int!){setAge(age: $age)} ", Map.of("age", age)).getErrors().getFirst();
+		error = execute("mutation setAge($age: Int!){setAge(age: $age)} ", Map.of("age", age), true).getErrors().getFirst();
 
 		assertEquals("must be less than or equal to 99", error.getMessage());
 	}
 
-	private ExecutionResult execute(String query, Map<String, Object> variables) {
-		GraphQLSchema preSchema = SchemaBuilder.builder().classpath("com.phocassoftware.graphql.builder.type.directive").build().build();
+	private ExecutionResult execute(String query, Map<String, Object> variables, boolean validate) {
+		var builder = SchemaBuilder.builder().classpath("com.phocassoftware.graphql.builder.type.directive");
+		if (validate) builder = builder.validate();
+		GraphQLSchema preSchema = builder.build().build();
 		GraphQL schema = GraphQL.newGraphQL(new IntrospectionWithDirectivesSupport().apply(preSchema)).build();
 
 		var input = ExecutionInput.newExecutionInput();

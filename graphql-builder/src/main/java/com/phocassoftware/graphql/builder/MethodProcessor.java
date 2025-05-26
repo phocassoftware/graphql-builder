@@ -66,7 +66,7 @@ class MethodProcessor {
 		graphSubscriptions.name("Subscriptions");
 	}
 
-	void process(AuthorizerSchema authorizer, Method method) {
+	void process(AuthorizerSchema authorizer, Method method, boolean shouldValidate) {
 		if (!Modifier.isStatic(method.getModifiers())) {
 			throw new RuntimeException("End point must be a static method");
 		}
@@ -85,10 +85,14 @@ class MethodProcessor {
 			return;
 		}
 
-		object.field(process(authorizer, coordinates, null, method));
+		object.field(process(authorizer, coordinates, null, method, shouldValidate));
 	}
 
 	Builder process(AuthorizerSchema authorizer, FieldCoordinates coordinates, TypeMeta parentMeta, Method method) {
+		return process(authorizer, coordinates, parentMeta, method, false);
+	}
+
+	Builder process(AuthorizerSchema authorizer, FieldCoordinates coordinates, TypeMeta parentMeta, Method method, boolean shouldValidate) {
 		GraphQLFieldDefinition.Builder field = GraphQLFieldDefinition.newFieldDefinition();
 
 		entityProcessor.addSchemaDirective(method, method.getDeclaringClass(), field::withAppliedDirective);
@@ -130,14 +134,20 @@ class MethodProcessor {
 			field.argument(argument);
 		}
 
-		DataFetcher<?> fetcher = buildFetcher(directives, authorizer, method, meta);
+		DataFetcher<?> fetcher = buildFetcher(directives, authorizer, method, meta, shouldValidate);
 		codeRegistry.dataFetcher(coordinates, fetcher);
 		return field;
 	}
 
-	private <T extends Annotation> DataFetcher<?> buildFetcher(DirectivesSchema diretives, AuthorizerSchema authorizer, Method method, TypeMeta meta) {
-		DataFetcher<?> fetcher = buildDataFetcher(meta, method);
-		fetcher = diretives.wrap(method, meta, fetcher);
+	private <T extends Annotation> DataFetcher<?> buildFetcher(
+		DirectivesSchema directives,
+		AuthorizerSchema authorizer,
+		Method method,
+		TypeMeta meta,
+		boolean shouldValidate
+	) {
+		DataFetcher<?> fetcher = buildDataFetcher(meta, method, shouldValidate);
+		fetcher = directives.wrap(method, meta, fetcher);
 
 		if (authorizer != null) {
 			fetcher = authorizer.wrap(fetcher, method);
@@ -145,7 +155,7 @@ class MethodProcessor {
 		return fetcher;
 	}
 
-	private DataFetcher<?> buildDataFetcher(TypeMeta meta, Method method) {
+	private DataFetcher<?> buildDataFetcher(TypeMeta meta, Method method, boolean shouldValidate) {
 		Function<DataFetchingEnvironment, Object>[] resolvers = new Function[method.getParameterCount()];
 
 		method.setAccessible(true);
@@ -163,9 +173,11 @@ class MethodProcessor {
 
 		DataFetcher<?> fetcher = env -> {
 			try {
-				List<GraphQLError> errors = validationRules.runValidationRules(env);
-				if (!errors.isEmpty()) {
-					return DataFetcherResult.newResult().errors(errors).data(null).build();
+				if (shouldValidate) {
+					List<GraphQLError> errors = validationRules.runValidationRules(env);
+					if (!errors.isEmpty()) {
+						return DataFetcherResult.newResult().errors(errors).data(null).build();
+					}
 				}
 
 				Object[] args = new Object[resolvers.length];

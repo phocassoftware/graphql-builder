@@ -57,10 +57,10 @@ public class SchemaBuilder {
 		return this;
 	}
 
-	private SchemaBuilder process(HashSet<Method> endPoints) throws ReflectiveOperationException {
+	private SchemaBuilder process(HashSet<Method> endPoints, boolean shouldValidate) throws ReflectiveOperationException {
 		var methodProcessor = this.entityProcessor.getMethodProcessor();
 		for (var method : endPoints) {
-			methodProcessor.process(authorizer, method);
+			methodProcessor.process(authorizer, method, shouldValidate);
 		}
 
 		return this;
@@ -112,6 +112,7 @@ public class SchemaBuilder {
 		private DataFetcherRunner dataFetcherRunner = (method, fetcher) -> fetcher;
 		private final List<String> classpaths = new ArrayList<>();
 		private final List<GraphQLScalarType> scalars = new ArrayList<>();
+		private boolean shouldValidate = false;
 
 		private Builder() {}
 
@@ -127,6 +128,11 @@ public class SchemaBuilder {
 
 		public Builder scalar(GraphQLScalarType scalar) {
 			this.scalars.add(scalar);
+			return this;
+		}
+
+		public Builder validate() {
+			this.shouldValidate = true;
 			return this;
 		}
 
@@ -158,7 +164,7 @@ public class SchemaBuilder {
 
 				return new SchemaBuilder(dataFetcherRunner, scalars, directivesSchema, authorizer)
 					.processTypes(types)
-					.process(endPoints)
+					.process(endPoints, shouldValidate)
 					.build(schemaConfiguration);
 			} catch (ReflectiveOperationException e) {
 				throw new RuntimeException(e);
