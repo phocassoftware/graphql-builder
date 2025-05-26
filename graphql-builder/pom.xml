@@ -17,20 +17,20 @@
     <name>graphql-builder</name>
     <description>Builds a graphql schema from a model using reflection</description>
 
-    <parent>
-        <groupId>com.phocassoftware</groupId>
-        <artifactId>graphql-builder-parent</artifactId>
-        <version>1.0.10-SNAPSHOT</version>
-    </parent>
+	<parent>
+		<groupId>com.phocassoftware</groupId>
+		<artifactId>graphql-builder-parent</artifactId>
+		<version>1.1.0-SNAPSHOT</version>
+	</parent>
 
     <artifactId>graphql-builder</artifactId>
 
-    <properties>
-        <junit.jupiter.version>5.12.1</junit.jupiter.version>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <jackson.version>2.18.3</jackson.version>
-        <graphql.version>22.3</graphql.version>
-    </properties>
+	<properties>
+		<junit.jupiter.version>5.12.2</junit.jupiter.version>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<jackson.version>2.19.0</jackson.version>
+		<graphql.version>24.0</graphql.version>
+	</properties>
 
     <licenses>
         <license>

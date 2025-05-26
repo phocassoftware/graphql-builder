@@ -551,10 +551,6 @@ public class DynamoDb extends DatabaseDriver {
 		Class<T> type,
 		TableDataLoader<DatabaseKey<Table>> items
 	) {
-		if (getExtractor(entry.getClass()).isPresent() || getExtractor(type).isPresent()) {
-			throw new UnsupportedOperationException("hashed objects can not be linked");
-		}
-
 		String tableTarget = table(type);
 		var links = getLinks(entry).get(tableTarget);
 		if (links == null) {
@@ -1289,10 +1285,6 @@ public class DynamoDb extends DatabaseDriver {
 
 	@Override
 	public <T extends Table> CompletableFuture<T> link(String organisationId, T entity, Class<? extends Table> class1, List<String> groupIds) {
-		if (getExtractor(entity.getClass()).isPresent() || getExtractor(class1).isPresent()) {
-			throw new UnsupportedOperationException("hashed objects can not be linked");
-		}
-
 		var source = table(entity.getClass());
 
 		var target = table(class1);
@@ -1333,10 +1325,6 @@ public class DynamoDb extends DatabaseDriver {
 		final Class<? extends Table> clazz,
 		final String targetId
 	) {
-		if (getExtractor(entity.getClass()).isPresent() || getExtractor(clazz).isPresent()) {
-			throw new UnsupportedOperationException("hashed objects can not be linked");
-		}
-
 		final var updateEntityLinksRequest = createRemoveLinkRequest(organisationId, entity, clazz, targetId);
 
 		return client
@@ -1393,9 +1381,6 @@ public class DynamoDb extends DatabaseDriver {
 	public <T extends Table> CompletableFuture<T> deleteLinks(String organisationId, T entity) {
 		if (getLinks(entity).isEmpty()) {
 			return CompletableFuture.completedFuture(entity);
-		}
-		if (getExtractor(entity.getClass()).isPresent()) {
-			throw new UnsupportedOperationException("hashed objects can not be linked");
 		}
 
 		var organisationIdAttribute = AttributeValue.builder().s(organisationId).build();

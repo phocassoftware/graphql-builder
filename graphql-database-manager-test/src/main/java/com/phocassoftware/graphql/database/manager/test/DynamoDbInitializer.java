@@ -17,32 +17,30 @@ import com.amazonaws.services.dynamodbv2.local.server.DynamoDBProxyServer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.Database;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;
+
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.concurrent.ExecutionException;
+
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.AttributeDefinition;
-import software.amazon.awssdk.services.dynamodb.model.GlobalSecondaryIndex;
-import software.amazon.awssdk.services.dynamodb.model.KeySchemaElement;
-import software.amazon.awssdk.services.dynamodb.model.KeyType;
-import software.amazon.awssdk.services.dynamodb.model.ProjectionType;
-import software.amazon.awssdk.services.dynamodb.model.ScalarAttributeType;
-import software.amazon.awssdk.services.dynamodb.model.StreamViewType;
+import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.services.dynamodb.streams.DynamoDbStreamsAsyncClient;
 
 final class DynamoDbInitializer {
 
 	@SuppressWarnings("unchecked")
 	static void createTable(final DynamoDbClient client, final String name) throws ExecutionException, InterruptedException {
-		if (client.listTables().tableNames().contains(name)) {
+		try {
+			client.describeTable(builder -> builder.tableName(name));
 			return;
-		}
+		} catch (ResourceNotFoundException ignored) {}
+
 		// looks like bug within local dynamodb client around creating multiple tables at the same time
 		synchronized (DynamoDbInitializer.class) {
 			client
@@ -96,42 +94,46 @@ final class DynamoDbInitializer {
 	}
 
 	static void createHistoryTable(final DynamoDbClient client, final String name) throws ExecutionException, InterruptedException {
-		if (client.listTables().tableNames().contains(name)) {
+		try {
+			client.describeTable(builder -> builder.tableName(name));
 			return;
-		}
+		} catch (ResourceNotFoundException ignored) {}
 
-		client
-			.createTable(
-				t -> t
-					.tableName(name)
-					.keySchema(
-						KeySchemaElement.builder().attributeName("organisationIdType").keyType(KeyType.HASH).build(),
-						KeySchemaElement.builder().attributeName("idRevision").keyType(KeyType.RANGE).build()
-					)
-					.localSecondaryIndexes(
-						builder -> builder
-							.indexName("startsWithUpdatedAt")
-							.projection(b -> b.projectionType(ProjectionType.ALL))
-							.keySchema(
-								KeySchemaElement.builder().attributeName("organisationIdType").keyType(KeyType.HASH).build(),
-								KeySchemaElement.builder().attributeName("startsWithUpdatedAt").keyType(KeyType.RANGE).build()
-							),
-						builder -> builder
-							.indexName("idDate")
-							.projection(b -> b.projectionType(ProjectionType.ALL))
-							.keySchema(
-								KeySchemaElement.builder().attributeName("organisationIdType").keyType(KeyType.HASH).build(),
-								KeySchemaElement.builder().attributeName("idDate").keyType(KeyType.RANGE).build()
-							)
-					)
-					.attributeDefinitions(
-						AttributeDefinition.builder().attributeName("organisationIdType").attributeType(ScalarAttributeType.S).build(),
-						AttributeDefinition.builder().attributeName("idRevision").attributeType(ScalarAttributeType.B).build(),
-						AttributeDefinition.builder().attributeName("idDate").attributeType(ScalarAttributeType.B).build(),
-						AttributeDefinition.builder().attributeName("startsWithUpdatedAt").attributeType(ScalarAttributeType.B).build()
-					)
-					.provisionedThroughput(p -> p.readCapacityUnits(10L).writeCapacityUnits(10L).build())
-			);
+		// looks like bug within local dynamodb client around creating multiple tables at the same time
+		synchronized (DynamoDbInitializer.class) {
+			client
+				.createTable(
+					t -> t
+						.tableName(name)
+						.keySchema(
+							KeySchemaElement.builder().attributeName("organisationIdType").keyType(KeyType.HASH).build(),
+							KeySchemaElement.builder().attributeName("idRevision").keyType(KeyType.RANGE).build()
+						)
+						.localSecondaryIndexes(
+							builder -> builder
+								.indexName("startsWithUpdatedAt")
+								.projection(b -> b.projectionType(ProjectionType.ALL))
+								.keySchema(
+									KeySchemaElement.builder().attributeName("organisationIdType").keyType(KeyType.HASH).build(),
+									KeySchemaElement.builder().attributeName("startsWithUpdatedAt").keyType(KeyType.RANGE).build()
+								),
+							builder -> builder
+								.indexName("idDate")
+								.projection(b -> b.projectionType(ProjectionType.ALL))
+								.keySchema(
+									KeySchemaElement.builder().attributeName("organisationIdType").keyType(KeyType.HASH).build(),
+									KeySchemaElement.builder().attributeName("idDate").keyType(KeyType.RANGE).build()
+								)
+						)
+						.attributeDefinitions(
+							AttributeDefinition.builder().attributeName("organisationIdType").attributeType(ScalarAttributeType.S).build(),
+							AttributeDefinition.builder().attributeName("idRevision").attributeType(ScalarAttributeType.B).build(),
+							AttributeDefinition.builder().attributeName("idDate").attributeType(ScalarAttributeType.B).build(),
+							AttributeDefinition.builder().attributeName("startsWithUpdatedAt").attributeType(ScalarAttributeType.B).build()
+						)
+						.provisionedThroughput(p -> p.readCapacityUnits(10L).writeCapacityUnits(10L).build())
+				);
+		}
 	}
 
 	static synchronized DynamoDBProxyServer startDynamoServer(final String port) throws Exception {
