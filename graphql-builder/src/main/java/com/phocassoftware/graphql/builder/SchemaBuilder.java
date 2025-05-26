@@ -182,7 +182,9 @@ public class SchemaBuilder {
 
 		private static Set<Class<?>> getJakartaAnnotations() {
 			Reflections reflections = new Reflections("jakarta.validation.constraints", SubTypes.filterResultsBy(c -> true));
-			return reflections.getSubTypesOf(Object.class).stream()
+			return reflections
+				.getSubTypesOf(Object.class)
+				.stream()
 				.filter(a -> a.isAnnotationPresent(Constraint.class))
 				.collect(Collectors.toSet());
 		}

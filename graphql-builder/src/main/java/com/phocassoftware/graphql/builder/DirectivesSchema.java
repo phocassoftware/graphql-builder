@@ -53,7 +53,9 @@ class DirectivesSchema {
 
 	// TODO:mess of exceptions
 	public static DirectivesSchema build(
-		List<RestrictTypeFactory<?>> globalDirectives, Set<Class<?>> directiveTypes, Set<Class<?>> jakartaDirectiveTypes
+		List<RestrictTypeFactory<?>> globalDirectives,
+		Set<Class<?>> directiveTypes,
+		Set<Class<?>> jakartaDirectiveTypes
 	) throws ReflectiveOperationException {
 		Map<Class<? extends Annotation>, DirectiveCaller<?>> targets = new HashMap<>();
 
@@ -104,28 +106,27 @@ class DirectivesSchema {
 		// TODO: hate having this cache here would love to scope against the env object but nothing to hook into dataload caused global leak
 		Map<DataFetchingEnvironment, CompletableFuture<RestrictType>> cache = Collections.synchronizedMap(new WeakHashMap<>());
 
-		return env ->
-			cache
-				.computeIfAbsent(env, key -> directive.create(key).thenApply(t -> t))
-				.thenCompose(restrict -> {
-					try {
-						Object response = fetcher.get(env);
-						if (response instanceof CompletionStage) {
-							return ((CompletionStage) response).thenCompose(r -> applyRestrict(restrict, r));
-						}
-						return applyRestrict(restrict, response);
-					} catch (Exception e) {
-						if (e instanceof RuntimeException runtimeException) {
-							throw runtimeException;
-						}
-						throw new RuntimeException(e);
+		return env -> cache
+			.computeIfAbsent(env, key -> directive.create(key).thenApply(t -> t))
+			.thenCompose(restrict -> {
+				try {
+					Object response = fetcher.get(env);
+					if (response instanceof CompletionStage) {
+						return ((CompletionStage) response).thenCompose(r -> applyRestrict(restrict, r));
 					}
-				});
+					return applyRestrict(restrict, response);
+				} catch (Exception e) {
+					if (e instanceof RuntimeException runtimeException) {
+						throw runtimeException;
+					}
+					throw new RuntimeException(e);
+				}
+			});
 	}
 
 	public boolean target(Method method, TypeMeta meta) {
 		for (var globalRestricts : this.global) {
-			//TODO: extract class
+			// TODO: extract class
 			if (globalRestricts.extractType().isAssignableFrom(meta.getType())) {
 				return true;
 			}
