@@ -89,7 +89,7 @@ public class DirectiveTest {
 		List<LinkedHashMap<String, Object>> dir = (List<LinkedHashMap<String, Object>>) ((Map<String, Object>) response.get("__schema")).get("directives");
 		LinkedHashMap<String, Object> input = dir.stream().filter(map -> map.get("name").equals("Input")).collect(Collectors.toList()).get(0);
 
-		assertEquals(32, dir.size());
+		assertEquals(30, dir.size());
 		assertEquals("ARGUMENT_DEFINITION", ((List<String>) input.get("locations")).get(0));
 		assertEquals(1, ((List<Object>) input.get("args")).size());
 		// getNickname(nickName: String! @Input(value : "TT")): String!
