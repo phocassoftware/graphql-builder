@@ -12,15 +12,23 @@
 package com.phocassoftware.graphql.builder;
 
 import com.phocassoftware.graphql.builder.annotations.*;
+import graphql.scalars.ExtendedScalars;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchema;
+
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
+
+import jakarta.validation.Constraint;
 import org.reflections.Reflections;
 import org.reflections.scanners.Scanners;
+
+import static org.reflections.scanners.Scanners.SubTypes;
 
 public class SchemaBuilder {
 
@@ -49,10 +57,10 @@ public class SchemaBuilder {
 		return this;
 	}
 
-	private SchemaBuilder process(HashSet<Method> endPoints) throws ReflectiveOperationException {
+	private SchemaBuilder process(HashSet<Method> endPoints, boolean shouldValidate) throws ReflectiveOperationException {
 		var methodProcessor = this.entityProcessor.getMethodProcessor();
 		for (var method : endPoints) {
-			methodProcessor.process(authorizer, method);
+			methodProcessor.process(authorizer, method, shouldValidate);
 		}
 
 		return this;
@@ -75,7 +83,7 @@ public class SchemaBuilder {
 			builder.subscription(subscriptions);
 		}
 
-		directives.getSchemaDirective().forEach(directive -> builder.additionalDirective(directive));
+		directives.getSchemaDirective().forEach(builder::additionalDirective);
 
 		for (var schema : schemaConfiguration) {
 			this.directives.addSchemaDirective(schema, schema, builder::withSchemaAppliedDirective);
@@ -102,8 +110,9 @@ public class SchemaBuilder {
 	public static class Builder {
 
 		private DataFetcherRunner dataFetcherRunner = (method, fetcher) -> fetcher;
-		private List<String> classpaths = new ArrayList<>();
-		private List<GraphQLScalarType> scalars = new ArrayList<>();
+		private final List<String> classpaths = new ArrayList<>();
+		private final List<GraphQLScalarType> scalars = new ArrayList<>();
+		private boolean shouldValidate = false;
 
 		private Builder() {}
 
@@ -122,50 +131,23 @@ public class SchemaBuilder {
 			return this;
 		}
 
+		public Builder validate() {
+			this.shouldValidate = true;
+			return this;
+		}
+
 		public GraphQLSchema.Builder build() {
 			try {
-				Reflections reflections = new Reflections(classpaths, Scanners.SubTypes, Scanners.MethodsAnnotated, Scanners.TypesAnnotated);
+				this.scalar(ExtendedScalars.GraphQLLong);
+
+				Reflections reflections = new Reflections(classpaths, SubTypes, Scanners.MethodsAnnotated, Scanners.TypesAnnotated);
 				Set<Class<? extends Authorizer>> authorizers = reflections.getSubTypesOf(Authorizer.class);
 				// want to make everything split by package
 				AuthorizerSchema authorizer = AuthorizerSchema.build(dataFetcherRunner, new HashSet<>(classpaths), authorizers);
 
 				Set<Class<? extends SchemaConfiguration>> schemaConfiguration = reflections.getSubTypesOf(SchemaConfiguration.class);
 
-				Set<Class<?>> directivesTypes = reflections.getTypesAnnotatedWith(Directive.class);
-				directivesTypes.addAll(reflections.getTypesAnnotatedWith(DataFetcherWrapper.class));
-
-				Set<Class<?>> restrict = reflections.getTypesAnnotatedWith(Restrict.class);
-				Set<Class<?>> restricts = reflections.getTypesAnnotatedWith(Restricts.class);
-				List<RestrictTypeFactory<?>> globalRestricts = new ArrayList<>();
-
-				for (var r : restrict) {
-					Restrict annotation = EntityUtil.getAnnotation(r, Restrict.class);
-					var factoryClass = annotation.value();
-					var factory = factoryClass.getConstructor().newInstance();
-					if (!factory.extractType().isAssignableFrom(r)) {
-						throw new RuntimeException(
-							"Restrict annotation does match class applied to targets" + factory.extractType() + " but was on class " + r
-						);
-					}
-					globalRestricts.add(factory);
-				}
-
-				for (var r : restricts) {
-					Restricts annotations = EntityUtil.getAnnotation(r, Restricts.class);
-					for (Restrict annotation : annotations.value()) {
-						var factoryClass = annotation.value();
-						var factory = factoryClass.getConstructor().newInstance();
-
-						if (!factory.extractType().isAssignableFrom(r)) {
-							throw new RuntimeException(
-								"Restrict annotation does match class applied to targets" + factory.extractType() + " but was on class " + r
-							);
-						}
-						globalRestricts.add(factory);
-					}
-				}
-
-				DirectivesSchema directivesSchema = DirectivesSchema.build(globalRestricts, directivesTypes); // Entry point for directives
+				DirectivesSchema directivesSchema = getDirectivesSchema(reflections);
 
 				Set<Class<?>> types = reflections.getTypesAnnotatedWith(Entity.class);
 
@@ -178,15 +160,69 @@ public class SchemaBuilder {
 				endPoints.addAll(queries);
 
 				types.removeIf(t -> t.getDeclaredAnnotation(Entity.class) == null);
-				types.removeIf(t -> t.isAnonymousClass());
+				types.removeIf(Class::isAnonymousClass);
 
 				return new SchemaBuilder(dataFetcherRunner, scalars, directivesSchema, authorizer)
 					.processTypes(types)
-					.process(endPoints)
+					.process(endPoints, shouldValidate)
 					.build(schemaConfiguration);
 			} catch (ReflectiveOperationException e) {
 				throw new RuntimeException(e);
 			}
+		}
+
+		private static DirectivesSchema getDirectivesSchema(Reflections reflections) throws ReflectiveOperationException {
+			Set<Class<?>> directivesTypes = reflections.getTypesAnnotatedWith(Directive.class);
+			directivesTypes.addAll(reflections.getTypesAnnotatedWith(DataFetcherWrapper.class));
+
+			List<RestrictTypeFactory<?>> globalRestricts = getGlobalRestricts(reflections);
+
+			return DirectivesSchema.build(globalRestricts, directivesTypes, getJakartaAnnotations());
+		}
+
+		private static Set<Class<?>> getJakartaAnnotations() {
+			Reflections reflections = new Reflections("jakarta.validation.constraints", SubTypes.filterResultsBy(c -> true));
+			return reflections
+				.getSubTypesOf(Object.class)
+				.stream()
+				.filter(a -> a.isAnnotationPresent(Constraint.class))
+				.collect(Collectors.toSet());
+		}
+
+		private static List<RestrictTypeFactory<?>> getGlobalRestricts(Reflections reflections)
+			throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
+			Set<Class<?>> restrict = reflections.getTypesAnnotatedWith(Restrict.class);
+			Set<Class<?>> restricts = reflections.getTypesAnnotatedWith(Restricts.class);
+			List<RestrictTypeFactory<?>> globalRestricts = new ArrayList<>();
+
+			for (var r : restrict) {
+				Restrict annotation = EntityUtil.getAnnotation(r, Restrict.class);
+				var factoryClass = annotation.value();
+				var factory = factoryClass.getConstructor().newInstance();
+				if (!factory.extractType().isAssignableFrom(r)) {
+					throw new RuntimeException(
+						"Restrict annotation does match class applied to targets" + factory.extractType() + " but was on class " + r
+					);
+				}
+				globalRestricts.add(factory);
+			}
+
+			for (var r : restricts) {
+				Restricts annotations = EntityUtil.getAnnotation(r, Restricts.class);
+				for (Restrict annotation : annotations.value()) {
+					var factoryClass = annotation.value();
+					var factory = factoryClass.getConstructor().newInstance();
+
+					if (!factory.extractType().isAssignableFrom(r)) {
+						throw new RuntimeException(
+							"Restrict annotation does match class applied to targets" + factory.extractType() + " but was on class " + r
+						);
+					}
+					globalRestricts.add(factory);
+				}
+			}
+
+			return globalRestricts;
 		}
 	}
 }
