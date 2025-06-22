@@ -13,13 +13,14 @@ package com.phocassoftware.graphql.builder;
 
 import static com.phocassoftware.graphql.builder.EntityUtil.isContext;
 
-import com.phocassoftware.graphql.builder.annotations.Directive;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDeprecated;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.Mutation;
 import com.phocassoftware.graphql.builder.annotations.Query;
 import com.phocassoftware.graphql.builder.annotations.Subscription;
 import graphql.GraphQLContext;
+import graphql.GraphQLError;
+import graphql.execution.DataFetcherResult;
 import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.FieldCoordinates;
@@ -30,17 +31,20 @@ import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLFieldDefinition.Builder;
 import graphql.schema.GraphQLObjectType;
+import graphql.validation.rules.ValidationRules;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.List;
 import java.util.function.Function;
 
 class MethodProcessor {
 
 	private final DataFetcherRunner dataFetcherRunner;
 	private final EntityProcessor entityProcessor;
-	private final DirectivesSchema diretives;
+	private final DirectivesSchema directives;
 
 	private final GraphQLCodeRegistry.Builder codeRegistry;
 
@@ -48,10 +52,10 @@ class MethodProcessor {
 	private final GraphQLObjectType.Builder graphMutations;
 	private final GraphQLObjectType.Builder graphSubscriptions;
 
-	public MethodProcessor(DataFetcherRunner dataFetcherRunner, EntityProcessor entityProcessor, DirectivesSchema diretives) {
+	public MethodProcessor(DataFetcherRunner dataFetcherRunner, EntityProcessor entityProcessor, DirectivesSchema directives) {
 		this.dataFetcherRunner = dataFetcherRunner;
 		this.entityProcessor = entityProcessor;
-		this.diretives = diretives;
+		this.directives = directives;
 		this.codeRegistry = GraphQLCodeRegistry.newCodeRegistry();
 
 		this.graphQuery = GraphQLObjectType.newObject();
@@ -62,7 +66,7 @@ class MethodProcessor {
 		graphSubscriptions.name("Subscriptions");
 	}
 
-	void process(AuthorizerSchema authorizer, Method method) throws ReflectiveOperationException {
+	void process(AuthorizerSchema authorizer, Method method, boolean shouldValidate) {
 		if (!Modifier.isStatic(method.getModifiers())) {
 			throw new RuntimeException("End point must be a static method");
 		}
@@ -81,11 +85,14 @@ class MethodProcessor {
 			return;
 		}
 
-		object.field(process(authorizer, coordinates, null, method));
+		object.field(process(authorizer, coordinates, null, method, shouldValidate));
 	}
 
-	Builder process(AuthorizerSchema authorizer, FieldCoordinates coordinates, TypeMeta parentMeta, Method method)
-		throws InvocationTargetException, IllegalAccessException {
+	Builder process(AuthorizerSchema authorizer, FieldCoordinates coordinates, TypeMeta parentMeta, Method method) {
+		return process(authorizer, coordinates, parentMeta, method, false);
+	}
+
+	Builder process(AuthorizerSchema authorizer, FieldCoordinates coordinates, TypeMeta parentMeta, Method method, boolean shouldValidate) {
 		GraphQLFieldDefinition.Builder field = GraphQLFieldDefinition.newFieldDefinition();
 
 		entityProcessor.addSchemaDirective(method, method.getDeclaringClass(), field::withAppliedDirective);
@@ -120,50 +127,27 @@ class MethodProcessor {
 				argument.description(description.value());
 			}
 
-			for (Annotation annotation : parameter.getAnnotations()) {
-				// Check to see if the annotation is a directive
-				if (!annotation.annotationType().isAnnotationPresent(Directive.class)) {
-					continue;
-				}
-				var annotationType = annotation.annotationType();
-				// Get the values out of the directive annotation
-				var methods = annotationType.getDeclaredMethods();
-
-				// Get the applied directive and add it to the argument
-				var appliedDirective = getAppliedDirective(annotation, annotationType, methods);
-				argument.withAppliedDirective(appliedDirective);
-			}
+			entityProcessor.addSchemaDirective(parameter, method.getDeclaringClass(), argument::withAppliedDirective);
 
 			argument.name(EntityUtil.getName(parameter.getName(), parameter));
 			// TODO: argument.defaultValue(defaultValue)
 			field.argument(argument);
 		}
 
-		DataFetcher<?> fetcher = buildFetcher(diretives, authorizer, method, meta);
+		DataFetcher<?> fetcher = buildFetcher(directives, authorizer, method, meta, shouldValidate);
 		codeRegistry.dataFetcher(coordinates, fetcher);
 		return field;
 	}
 
-	private GraphQLAppliedDirective getAppliedDirective(Annotation annotation, Class<? extends Annotation> annotationType, Method[] methods)
-		throws IllegalAccessException, InvocationTargetException {
-		var appliedDirective = new GraphQLAppliedDirective.Builder().name(annotationType.getSimpleName());
-		for (var definedMethod : methods) {
-			var name = definedMethod.getName();
-			var value = definedMethod.invoke(annotation);
-			if (value == null) {
-				continue;
-			}
-
-			TypeMeta innerMeta = new TypeMeta(null, definedMethod.getReturnType(), definedMethod.getGenericReturnType());
-			var argumentType = entityProcessor.getEntity(innerMeta).getInputType(innerMeta, definedMethod.getAnnotations());
-			appliedDirective.argument(GraphQLAppliedDirectiveArgument.newArgument().name(name).type(argumentType).valueProgrammatic(value).build());
-		}
-		return appliedDirective.build();
-	}
-
-	private <T extends Annotation> DataFetcher<?> buildFetcher(DirectivesSchema diretives, AuthorizerSchema authorizer, Method method, TypeMeta meta) {
-		DataFetcher<?> fetcher = buildDataFetcher(meta, method);
-		fetcher = diretives.wrap(method, meta, fetcher);
+	private <T extends Annotation> DataFetcher<?> buildFetcher(
+		DirectivesSchema directives,
+		AuthorizerSchema authorizer,
+		Method method,
+		TypeMeta meta,
+		boolean shouldValidate
+	) {
+		DataFetcher<?> fetcher = buildDataFetcher(meta, method, shouldValidate);
+		fetcher = directives.wrap(method, meta, fetcher);
 
 		if (authorizer != null) {
 			fetcher = authorizer.wrap(fetcher, method);
@@ -171,7 +155,7 @@ class MethodProcessor {
 		return fetcher;
 	}
 
-	private DataFetcher<?> buildDataFetcher(TypeMeta meta, Method method) {
+	private DataFetcher<?> buildDataFetcher(TypeMeta meta, Method method, boolean shouldValidate) {
 		Function<DataFetchingEnvironment, Object>[] resolvers = new Function[method.getParameterCount()];
 
 		method.setAccessible(true);
@@ -185,8 +169,17 @@ class MethodProcessor {
 			resolvers[i] = buildResolver(name, argMeta, parameter.getAnnotations());
 		}
 
+		ValidationRules validationRules = ValidationRules.newValidationRules().build();
+
 		DataFetcher<?> fetcher = env -> {
 			try {
+				if (shouldValidate) {
+					List<GraphQLError> errors = validationRules.runValidationRules(env);
+					if (!errors.isEmpty()) {
+						return DataFetcherResult.newResult().errors(errors).data(null).build();
+					}
+				}
+
 				Object[] args = new Object[resolvers.length];
 				for (int i = 0; i < resolvers.length; i++) {
 					args[i] = resolvers[i].apply(env);
