@@ -29,7 +29,7 @@
         <junit.jupiter.version>5.13.0</junit.jupiter.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jackson.version>2.19.0</jackson.version>
-        <graphql.version>22.0</graphql.version>
+        <graphql.version>24.1</graphql.version>
     </properties>
 
     <licenses>
@@ -49,12 +49,12 @@
         <dependency>
             <groupId>com.graphql-java</groupId>
             <artifactId>graphql-java-extended-scalars</artifactId>
-            <version>${graphql.version}</version>
+            <version>22.0</version>
         </dependency>
         <dependency>
             <groupId>com.graphql-java</groupId>
             <artifactId>graphql-java-extended-validation</artifactId>
-            <version>${graphql.version}</version>
+            <version>22.0</version>
         </dependency>
         <dependency>
             <groupId>org.reflections</groupId>

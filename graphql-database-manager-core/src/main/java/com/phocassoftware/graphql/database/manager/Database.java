@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.dataloader.DataLoader;
+import org.dataloader.DataLoaderFactory;
 import org.dataloader.DataLoaderOptions;
 
 @SuppressWarnings("unchecked")
@@ -61,32 +62,29 @@ public class Database {
 		this.submitted = new AtomicInteger();
 
 		items = new TableDataLoader<>(
-			new DataLoader<DatabaseKey<Table>, Table>(
-				keys -> {
-					return driver.get(keys);
-				},
-				DataLoaderOptions.newOptions().setMaxBatchSize(driver.maxBatchSize())
-			),
+			DataLoaderFactory
+				.newDataLoader(
+					driver::get,
+					DataLoaderOptions.newOptions().setMaxBatchSize(driver.maxBatchSize()).build()
+				),
 			this::handleFuture
 		); // will auto call global
 
 		queries = new TableDataLoader<>(
-			new DataLoader<DatabaseQueryKey<Table>, List<Table>>(
-				keys -> {
-					return merge(keys.stream().map(driver::query));
-				},
-				DataLoaderOptions.newOptions().setBatchingEnabled(false)
-			),
+			DataLoaderFactory
+				.newDataLoader(
+					keys -> merge(keys.stream().map(driver::query)),
+					DataLoaderOptions.newOptions().setBatchingEnabled(false).build()
+				),
 			this::handleFuture
 		); // will auto call global
 
 		queryHistories = new TableDataLoader<>(
-			new DataLoader<DatabaseQueryHistoryKey<Table>, List<Table>>(
-				keys -> {
-					return merge(keys.stream().map(driver::queryHistory));
-				},
-				DataLoaderOptions.newOptions().setBatchingEnabled(false)
-			),
+			DataLoaderFactory
+				.newDataLoader(
+					keys -> merge(keys.stream().map(driver::queryHistory)),
+					DataLoaderOptions.newOptions().setBatchingEnabled(false).build()
+				),
 			this::handleFuture
 		); // will auto call global
 
