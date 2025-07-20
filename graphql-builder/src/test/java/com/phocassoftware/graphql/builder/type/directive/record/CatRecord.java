@@ -9,7 +9,7 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.phocassoftware.graphql.builder.type.directive;
+package com.phocassoftware.graphql.builder.type.directive.record;
 
 import com.phocassoftware.graphql.builder.annotations.Entity;
 import com.phocassoftware.graphql.builder.annotations.Mutation;
@@ -19,32 +19,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
 @Entity
-public class Cat {
-
-	public boolean isCalico() {
-		return true;
-	}
-
-	public int getAge() {
-		return 3;
-	}
-
-	public boolean getFur() {
-		return true;
-	}
-
-	@Query
-	@Capture(color = "meow")
-	public static Cat getCat() {
-		return new Cat();
-	}
-
-	@Query
-	@Uppercase
-	public static Cat getUpper() {
-		return new Cat();
-	}
-
+public record CatRecord(int age, String name) {
 	@Mutation
 	public static String setName(@Size(min = 3) String name) {
 		return name;
@@ -56,13 +31,7 @@ public class Cat {
 	}
 
 	@Query
-	@Admin("tabby")
-	public static String allowed(String name) {
+	public static String getName(String name) {
 		return name;
-	}
-
-	@Query
-	public static String getNickname(@Input("TT") String nickName) {
-		return nickName;
 	}
 }

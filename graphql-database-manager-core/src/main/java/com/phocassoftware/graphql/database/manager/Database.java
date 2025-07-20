@@ -17,6 +17,7 @@ import com.phocassoftware.graphql.database.manager.access.ModificationPermission
 import com.phocassoftware.graphql.database.manager.util.BackupItem;
 import com.phocassoftware.graphql.database.manager.util.HistoryBackupItem;
 import com.phocassoftware.graphql.database.manager.util.TableCoreUtil;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
 import org.dataloader.DataLoader;
 import org.dataloader.DataLoaderFactory;
 import org.dataloader.DataLoaderOptions;
@@ -254,8 +256,7 @@ public class Database {
 	 *
 	 * @param <T>    database entity type to update
 	 * @param entity revision must match database or request will fail
-	 * @return updated entity with the revision incremented by one
-	 *         CompletableFuture will fail with a RevisionMismatchException
+	 * @return updated entity with the revision incremented by one CompletableFuture will fail with a RevisionMismatchException
 	 */
 	public <T extends Table> CompletableFuture<T> put(T entity) {
 		return put(entity, true);
@@ -265,8 +266,7 @@ public class Database {
 	 * @param <T>    database entity type to update
 	 * @param entity revision must match database or request will fail
 	 * @param check  Will only pass if the entity revision matches what is currently in the database
-	 * @return updated entity with the revision incremented by one
-	 *         CompletableFuture will fail with a RevisionMismatchException
+	 * @return updated entity with the revision incremented by one CompletableFuture will fail with a RevisionMismatchException
 	 */
 	public <T extends Table> CompletableFuture<T> put(T entity, boolean check) {
 		return putAllow

@@ -21,6 +21,7 @@ import graphql.schema.GraphQLInputType;
 import graphql.schema.GraphQLOutputType;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLType;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Type;
@@ -38,13 +39,13 @@ public class EntityProcessor {
 	private final Map<String, EntityHolder> entities;
 	private final MethodProcessor methodProcessor;
 
-	EntityProcessor(DataFetcherRunner dataFetcherRunner, List<GraphQLScalarType> scalars, DirectivesSchema diretives) {
-		this.methodProcessor = new MethodProcessor(dataFetcherRunner, this, diretives);
+	EntityProcessor(DataFetcherRunner dataFetcherRunner, List<GraphQLScalarType> scalars, DirectivesSchema directives) {
+		this.methodProcessor = new MethodProcessor(dataFetcherRunner, this, directives);
 		this.entities = new HashMap<>();
 		addDefaults();
 		addScalars(scalars);
 
-		this.directives = diretives;
+		this.directives = directives;
 	}
 
 	private void addDefaults() {
