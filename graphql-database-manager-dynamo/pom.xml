@@ -22,7 +22,7 @@
 	</parent>
 
 	<artifactId>graphql-database-manager-dynamo</artifactId>
-
+	<name>GraphQL Database Manager DynamoDB</name>
 	<properties>
 		<junit.jupiter.version>5.13.0</junit.jupiter.version>
 	</properties>

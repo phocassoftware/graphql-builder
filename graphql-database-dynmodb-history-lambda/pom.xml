@@ -22,7 +22,7 @@
 	</parent>
 
 	<artifactId>graphql-database-dynmodb-history-lambda</artifactId>
-
+	<name>GraphQL Database DynamoDB History Lambda</name>
 	<properties>
 		<junit.jupiter.version>5.6.0</junit.jupiter.version>
 	</properties>
