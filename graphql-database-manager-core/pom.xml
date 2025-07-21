@@ -24,7 +24,7 @@
     <artifactId>graphql-database-manager-core</artifactId>
     <name>GraphQL Database Manager Core</name>
     <properties>
-        <junit.jupiter.version>5.13.0</junit.jupiter.version>
+        <junit.jupiter.version>5.13.3</junit.jupiter.version>
     </properties>
 
 
