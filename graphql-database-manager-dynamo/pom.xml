@@ -24,7 +24,7 @@
 	<artifactId>graphql-database-manager-dynamo</artifactId>
 	<name>GraphQL Database Manager DynamoDB</name>
 	<properties>
-		<junit.jupiter.version>5.13.3</junit.jupiter.version>
+		<junit.jupiter.version>5.13.4</junit.jupiter.version>
 	</properties>
 
 	<licenses>
