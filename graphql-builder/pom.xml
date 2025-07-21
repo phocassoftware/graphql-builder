@@ -25,9 +25,9 @@
     <artifactId>graphql-builder</artifactId>
 
     <properties>
-        <junit.jupiter.version>5.13.0</junit.jupiter.version>
+        <junit.jupiter.version>5.13.3</junit.jupiter.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <jackson.version>2.19.0</jackson.version>
+        <jackson.version>2.19.2</jackson.version>
         <graphql.version>24.1</graphql.version>
     </properties>
 
@@ -68,7 +68,7 @@
         <dependency>
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
-            <version>3.1.0</version>
+            <version>3.1.1</version>
         </dependency>
 
         <dependency>
@@ -98,7 +98,7 @@
         <dependency>
             <groupId>io.reactivex.rxjava3</groupId>
             <artifactId>rxjava</artifactId>
-            <version>3.1.10</version>
+            <version>3.1.11</version>
             <scope>test</scope>
         </dependency>
         <dependency>
