@@ -22,7 +22,7 @@
 	<packaging>pom</packaging>
 
 	<properties>
-		<jackson.version>2.19.2</jackson.version>
+		<jackson.version>2.20.0</jackson.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 
@@ -63,7 +63,7 @@
 			<dependency>
 				<groupId>software.amazon.awssdk</groupId>
 				<artifactId>bom</artifactId>
-				<version>2.32.24</version>
+				<version>2.34.4</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
@@ -89,7 +89,7 @@
 			<plugin>
 				<groupId>net.revelc.code.formatter</groupId>
 				<artifactId>formatter-maven-plugin</artifactId>
-				<version>2.27.0</version>
+				<version>2.29.0</version>
 				<configuration>
 					<configFile>${project.parent.basedir}/formatter.xml</configFile>
 					<lineEnding>LF</lineEnding>
@@ -146,7 +146,7 @@ the License.
 					<plugin>
 						<groupId>org.apache.maven.plugins</groupId>
 						<artifactId>maven-javadoc-plugin</artifactId>
-						<version>3.11.3</version>
+						<version>3.12.0</version>
 						<executions>
 							<execution>
 								<id>attach-javadocs</id>
@@ -173,7 +173,7 @@ the License.
 					<plugin>
 						<groupId>org.sonatype.central</groupId>
 						<artifactId>central-publishing-maven-plugin</artifactId>
-						<version>0.8.0</version>
+						<version>0.9.0</version>
 						<extensions>true</extensions>
 						<configuration>
 							<publishingServerId>central</publishingServerId>
