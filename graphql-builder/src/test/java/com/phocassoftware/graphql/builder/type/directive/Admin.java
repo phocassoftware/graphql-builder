@@ -27,6 +27,9 @@ import java.lang.annotation.Target;
 public @interface Admin {
 	String value();
 
+	Class<?>[] toIgnore() default {};
+	
+
 	static class Processor implements DirectiveCaller<Admin> {
 
 		@Override
