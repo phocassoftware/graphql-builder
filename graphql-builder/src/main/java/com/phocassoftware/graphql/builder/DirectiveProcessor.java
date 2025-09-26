@@ -99,7 +99,7 @@ public class DirectiveProcessor {
 		if (returnType.isArray()) {
 			return validResponseType(returnType.getComponentType());
 		}
-		if(returnType.equals(Class.class)) {
+		if (returnType.equals(Class.class)) {
 			return false;
 		}
 		return true;
