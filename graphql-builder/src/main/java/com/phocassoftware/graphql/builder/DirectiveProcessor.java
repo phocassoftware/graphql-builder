@@ -63,6 +63,9 @@ public class DirectiveProcessor {
 			if (method.getParameterCount() != 0) {
 				continue;
 			}
+			if (!validResponseType(method.getReturnType())) {
+				continue;
+			}
 			var name = method.getName();
 
 			GraphQLArgument.Builder argument = GraphQLArgument.newArgument();
@@ -92,6 +95,16 @@ public class DirectiveProcessor {
 		return new DirectiveProcessor(builder.build(), builders);
 	}
 
+	private static boolean validResponseType(Class<?> returnType) {
+		if (returnType.isArray()) {
+			return validResponseType(returnType.getComponentType());
+		}
+		if (returnType.equals(Class.class)) {
+			return false;
+		}
+		return true;
+	}
+
 	public void apply(Annotation annotation, Consumer<GraphQLAppliedDirective> builder) throws InvocationTargetException, IllegalAccessException {
 		var methods = annotation.annotationType().getDeclaredMethods();
 
@@ -101,6 +114,9 @@ public class DirectiveProcessor {
 
 		// To get the value we loop through each method and get the method name and value
 		for (Method m : methods) {
+			if (!validResponseType(m.getReturnType())) {
+				continue;
+			}
 			// Using the builder created earlier populate the values of each method.
 			arguments.argument(builders.get(m.getName()).apply(annotation));
 		}

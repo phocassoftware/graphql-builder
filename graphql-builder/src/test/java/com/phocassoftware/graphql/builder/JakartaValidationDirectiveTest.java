@@ -56,12 +56,10 @@ class JakartaValidationDirectiveTest {
 		assertEquals(32, dir.size());
 		assertEquals("ARGUMENT_DEFINITION", ((List<String>) constraint.get("locations")).get(0));
 		assertEquals("INPUT_FIELD_DEFINITION", ((List<String>) constraint.get("locations")).get(1));
-		assertEquals(5, ((List<Object>) constraint.get("args")).size());
-		assertEquals("{name=payload}", ((List<Object>) constraint.get("args")).getFirst().toString());
-		assertEquals("{name=min}", ((List<Object>) constraint.get("args")).get(1).toString());
-		assertEquals("{name=max}", ((List<Object>) constraint.get("args")).get(2).toString());
-		assertEquals("{name=message}", ((List<Object>) constraint.get("args")).get(3).toString());
-		assertEquals("{name=groups}", ((List<Object>) constraint.get("args")).get(4).toString());
+		assertEquals(3, ((List<Object>) constraint.get("args")).size());
+		assertEquals("{name=min}", ((List<Object>) constraint.get("args")).get(0).toString());
+		assertEquals("{name=max}", ((List<Object>) constraint.get("args")).get(1).toString());
+		assertEquals("{name=message}", ((List<Object>) constraint.get("args")).get(2).toString());
 	}
 
 	@Test
