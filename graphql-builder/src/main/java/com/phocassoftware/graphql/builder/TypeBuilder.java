@@ -179,9 +179,7 @@ public abstract class TypeBuilder {
 				.filter(method -> {
 					var name = EntityUtil.getter(method);
 					if (name.isEmpty()) return false;
-					var exists = validMethods.containsKey(name.get());
-					validMethods.put(name.get(), method);
-					return exists;
+					return validMethods.put(name.get(), method) != null;
 				})
 				.map(Method::getName)
 				.toArray(String[]::new);
@@ -227,9 +225,7 @@ public abstract class TypeBuilder {
 					var method = type.getMethod(field.getName());
 					if (method.isAnnotationPresent(GraphQLIgnore.class)) return false;
 					var name = EntityUtil.getName(field.getName(), field, method);
-					var duplicate = validMethods.containsKey(name);
-					validMethods.put(name, method);
-					return duplicate;
+					return validMethods.put(name, method) != null;
 				} catch (NoSuchMethodException e) {
 					throw new RuntimeException("Failed to process method " + field, e);
 				}
