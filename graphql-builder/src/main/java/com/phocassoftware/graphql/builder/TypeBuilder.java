@@ -27,6 +27,10 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public abstract class TypeBuilder {
 
@@ -172,31 +176,20 @@ public abstract class TypeBuilder {
 			var type = meta.getType();
 			var methods = type.getMethods();
 
-			var validMethods = new HashMap<String, Method>();
+			var duplicateMethodNames = new HashSet<String>();
 
-			var duplicates = Arrays
+			Arrays
 				.stream(methods)
-				.filter(method -> {
+				.forEach(method -> {
 					var name = EntityUtil.getter(method);
-					if (name.isEmpty()) return false;
-					return validMethods.put(name.get(), method) != null;
-				})
-				.map(Method::getName)
-				.toArray(String[]::new);
-
-			if (duplicates.length > 0) {
-				throw new DuplicateMethodNameException(typeName, duplicates);
-			}
-
-			validMethods.forEach((name, method) -> {
-				try {
-					var f = entityProcessor.getMethodProcessor().process(null, FieldCoordinates.coordinates(typeName, name), meta, method);
+					if (name.isEmpty()) return;
+					if (!duplicateMethodNames.add(name.get())) {
+						throw new DuplicateMethodNameException(typeName, name.get());
+					}
+					var f = entityProcessor.getMethodProcessor().process(null, FieldCoordinates.coordinates(typeName, name.get()), meta, method);
 					graphType.field(f);
 					interfaceBuilder.field(f);
-				} catch (RuntimeException e) {
-					throw new RuntimeException("Failed to process method " + method, e);
-				}
-			});
+				});
 		}
 	}
 
@@ -219,26 +212,23 @@ public abstract class TypeBuilder {
 				.filter(field -> !field.getDeclaringClass().isInterface())
 				.filter(field -> !Modifier.isStatic(field.getModifiers()))
 				.toList();
-			var validMethods = new HashMap<String, Method>();
-			var duplicates = methods.stream().filter(field -> {
+
+			var duplicateMethodNames = new HashSet<String>();
+
+			methods.forEach(field -> {
 				try {
 					var method = type.getMethod(field.getName());
-					if (method.isAnnotationPresent(GraphQLIgnore.class)) return false;
+					if (method.isAnnotationPresent(GraphQLIgnore.class)) return;
 					var name = EntityUtil.getName(field.getName(), field, method);
-					return validMethods.put(name, method) != null;
+					if (!duplicateMethodNames.add(name)) {
+						throw new DuplicateMethodNameException(typeName, name);
+					}
+					var f = entityProcessor.getMethodProcessor().process(null, FieldCoordinates.coordinates(typeName, name), meta, method);
+					graphType.field(f);
+					interfaceBuilder.field(f);
 				} catch (NoSuchMethodException e) {
 					throw new RuntimeException("Failed to process method " + field, e);
 				}
-			}).map(Field::getName).toArray(String[]::new);
-
-			if (duplicates.length > 0) {
-				throw new DuplicateMethodNameException(typeName, duplicates);
-			}
-
-			validMethods.forEach((name, method) -> {
-				var f = entityProcessor.getMethodProcessor().process(null, FieldCoordinates.coordinates(typeName, name), meta, method);
-				graphType.field(f);
-				interfaceBuilder.field(f);
 			});
 		}
 	}
