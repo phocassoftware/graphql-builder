@@ -51,6 +51,16 @@ public class Cat {
 	}
 
 	@Mutation
+	public static String setProperties(PropertiesInput properties) {
+		return Cat.setName(properties.getName());
+	}
+
+	@Mutation
+	public static String setPropertiesMultipleConstructors(PropertiesInputMultipleConstructors properties) {
+		return Cat.setName(properties.getName());
+	}
+
+	@Mutation
 	public static int setAge(@Min(value = 3) @Max(value = 99) int age) {
 		return age;
 	}

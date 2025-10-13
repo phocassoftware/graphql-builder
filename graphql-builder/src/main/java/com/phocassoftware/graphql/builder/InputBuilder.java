@@ -27,6 +27,7 @@ import graphql.schema.GraphQLInputObjectField;
 import graphql.schema.GraphQLInputObjectType;
 import graphql.schema.GraphQLInputObjectType.Builder;
 import graphql.schema.GraphQLNamedInputType;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -127,7 +128,14 @@ public abstract class InputBuilder {
 					if (name.isPresent()) {
 						GraphQLInputObjectField.Builder field = GraphQLInputObjectField.newInputObjectField();
 						field.name(name.get());
+
 						entityProcessor.addSchemaDirective(method, meta.getType(), field::withAppliedDirective);
+
+						try {
+							var classField = method.getDeclaringClass().getDeclaredField(name.get());
+							entityProcessor.addSchemaDirective(classField, meta.getType(), field::withAppliedDirective);
+						} catch (NoSuchFieldException ignored) {}
+
 						TypeMeta innerMeta = new TypeMeta(meta, method.getParameterTypes()[0], method.getGenericParameterTypes()[0], method.getParameters()[0]);
 						var entity = entityProcessor.getEntity(innerMeta);
 						var inputType = entity.getInputType(innerMeta, method.getParameterAnnotations()[0]);
@@ -154,6 +162,7 @@ public abstract class InputBuilder {
 				try {
 					var name = EntityUtil.setter(method);
 					if (name.isPresent()) {
+
 						TypeMeta innerMeta = new TypeMeta(meta, method.getParameterTypes()[0], method.getGenericParameterTypes()[0], method.getParameters()[0]);
 						fieldMappers.add(FieldMapper.build(entityProcessor, innerMeta, name.get(), method));
 					}
@@ -181,6 +190,12 @@ public abstract class InputBuilder {
 				try {
 					GraphQLInputObjectField.Builder field = GraphQLInputObjectField.newInputObjectField();
 					field.name(parameter.getName());
+
+					var classProperties = meta.getType().getDeclaredFields();
+					for (var classProperty : classProperties) {
+						entityProcessor.addSchemaDirective(classProperty, meta.getType(), field::withAppliedDirective);
+					}
+
 					entityProcessor.addSchemaDirective(parameter, meta.getType(), field::withAppliedDirective);
 					TypeMeta innerMeta = new TypeMeta(meta, parameter.getType(), parameter.getParameterizedType(), parameter);
 					var entity = entityProcessor.getEntity(innerMeta);

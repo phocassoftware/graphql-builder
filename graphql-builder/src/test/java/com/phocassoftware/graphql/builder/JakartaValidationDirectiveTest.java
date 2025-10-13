@@ -77,6 +77,36 @@ class JakartaValidationDirectiveTest {
 	}
 
 	@Test
+	void testJakartaSizeValidationIsAppliedToInnerArgument() {
+		var name = "Roger";
+		Map<String, String> response = execute("mutation {setProperties(properties: {name: \"" + name + "\"})} ", null, true).getData();
+		var result = response.get("setProperties");
+
+		assertEquals(name, result);
+
+		name = "Po";
+		var r = execute("mutation {setProperties(properties: {name: \"" + name + "\"})} ", null, true);
+		var error = r.getErrors().getFirst();
+
+		assertEquals("size must be between 3 and 2147483647", error.getMessage());
+	}
+
+	@Test
+	void testJakartaSizeValidationIsAppliedToInnerArgumentWithMultipleConstructors() {
+		var name = "Roger";
+		Map<String, String> response = execute("mutation {setPropertiesMultipleConstructors(properties: {name: \"" + name + "\"})} ", null, true).getData();
+		var result = response.get("setPropertiesMultipleConstructors");
+
+		assertEquals(name, result);
+
+		name = "Po";
+		var r = execute("mutation {setPropertiesMultipleConstructors(properties: {name: \"" + name + "\"})} ", null, true);
+		var error = r.getErrors().getFirst();
+
+		assertEquals("size must be between 3 and 2147483647", error.getMessage());
+	}
+
+	@Test
 	void testJakartaSizeValidationIsNotAppliedWhenFlagIsFalse() {
 		var name = "Po";
 		Map<String, String> response = execute("mutation setName($name: String!){setName(name: $name)} ", Map.of("name", name), false).getData();
