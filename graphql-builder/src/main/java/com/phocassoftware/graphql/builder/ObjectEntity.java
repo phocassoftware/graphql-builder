@@ -65,11 +65,7 @@ public class ObjectEntity extends EntityHolder {
 
 	@Override
 	protected GraphQLNamedOutputType buildType() {
-		try {
-			return typeBuilder.buildType();
-		} catch (ReflectiveOperationException e) {
-			throw new RuntimeException(e);
-		}
+		return typeBuilder.buildType();
 	}
 
 	@Override

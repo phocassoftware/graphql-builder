@@ -14,14 +14,23 @@ package com.phocassoftware.graphql.builder;
 import com.phocassoftware.graphql.builder.annotations.Entity;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.GraphQLIgnore;
+import com.phocassoftware.graphql.builder.exceptions.DuplicateMethodNameException;
 import graphql.schema.FieldCoordinates;
 import graphql.schema.GraphQLInterfaceType;
 import graphql.schema.GraphQLNamedOutputType;
 import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLObjectType.Builder;
 import graphql.schema.GraphQLTypeReference;
+
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public abstract class TypeBuilder {
 
@@ -33,7 +42,7 @@ public abstract class TypeBuilder {
 		this.meta = meta;
 	}
 
-	public GraphQLNamedOutputType buildType() throws ReflectiveOperationException {
+	public GraphQLNamedOutputType buildType() {
 		Builder graphType = GraphQLObjectType.newObject();
 		String typeName = EntityUtil.getName(meta);
 		graphType.name(typeName);
@@ -154,8 +163,7 @@ public abstract class TypeBuilder {
 		interfaceBuilder.withInterface(interfaceName);
 	}
 
-	protected abstract void processFields(String typeName, Builder graphType, graphql.schema.GraphQLInterfaceType.Builder interfaceBuilder)
-		throws ReflectiveOperationException;
+	protected abstract void processFields(String typeName, Builder graphType, graphql.schema.GraphQLInterfaceType.Builder interfaceBuilder);
 
 	public static class ObjectType extends TypeBuilder {
 
@@ -164,22 +172,24 @@ public abstract class TypeBuilder {
 		}
 
 		@Override
-		protected void processFields(String typeName, Builder graphType, graphql.schema.GraphQLInterfaceType.Builder interfaceBuilder)
-			throws ReflectiveOperationException {
+		protected void processFields(String typeName, Builder graphType, graphql.schema.GraphQLInterfaceType.Builder interfaceBuilder) {
 			var type = meta.getType();
-			for (Method method : type.getMethods()) {
-				try {
+			var methods = type.getMethods();
+
+			var duplicateMethodNames = new HashSet<String>();
+
+			Arrays
+				.stream(methods)
+				.forEach(method -> {
 					var name = EntityUtil.getter(method);
-					if (name.isEmpty()) {
-						continue;
+					if (name.isEmpty()) return;
+					if (!duplicateMethodNames.add(name.get())) {
+						throw new DuplicateMethodNameException(typeName, name.get());
 					}
 					var f = entityProcessor.getMethodProcessor().process(null, FieldCoordinates.coordinates(typeName, name.get()), meta, method);
 					graphType.field(f);
 					interfaceBuilder.field(f);
-				} catch (RuntimeException e) {
-					throw new RuntimeException("Failed to process method " + method, e);
-				}
-			}
+				});
 		}
 	}
 
@@ -190,43 +200,36 @@ public abstract class TypeBuilder {
 		}
 
 		@Override
-		protected void processFields(String typeName, Builder graphType, graphql.schema.GraphQLInterfaceType.Builder interfaceBuilder)
-			throws ReflectiveOperationException {
+		protected void processFields(String typeName, Builder graphType, graphql.schema.GraphQLInterfaceType.Builder interfaceBuilder) {
 			var type = meta.getType();
 
-			for (var field : type.getDeclaredFields()) {
+			var methods = Arrays
+				.stream(type.getDeclaredFields())
+				.filter(field -> !field.isSynthetic())
+				.filter(field -> !field.getDeclaringClass().equals(Object.class))
+				.filter(field -> !field.isAnnotationPresent(GraphQLIgnore.class))
+				.filter(field -> !Modifier.isAbstract(field.getModifiers()))
+				.filter(field -> !field.getDeclaringClass().isInterface())
+				.filter(field -> !Modifier.isStatic(field.getModifiers()))
+				.toList();
+
+			var duplicateMethodNames = new HashSet<String>();
+
+			methods.forEach(field -> {
 				try {
-					if (field.isSynthetic()) {
-						continue;
+					var method = type.getMethod(field.getName());
+					if (method.isAnnotationPresent(GraphQLIgnore.class)) return;
+					var name = EntityUtil.getName(field.getName(), field, method);
+					if (!duplicateMethodNames.add(name)) {
+						throw new DuplicateMethodNameException(typeName, name);
 					}
-					if (field.getDeclaringClass().equals(Object.class)) {
-						continue;
-					}
-					if (field.isAnnotationPresent(GraphQLIgnore.class)) {
-						continue;
-					}
-					// will also be on implementing class
-					if (Modifier.isAbstract(field.getModifiers()) || field.getDeclaringClass().isInterface()) {
-						continue;
-					}
-					if (Modifier.isStatic(field.getModifiers())) {
-						continue;
-					} else {
-						var method = type.getMethod(field.getName());
-						if (method.isAnnotationPresent(GraphQLIgnore.class)) {
-							continue;
-						}
-
-						var name = EntityUtil.getName(field.getName(), field, method);
-
-						var f = entityProcessor.getMethodProcessor().process(null, FieldCoordinates.coordinates(typeName, name), meta, method);
-						graphType.field(f);
-						interfaceBuilder.field(f);
-					}
-				} catch (RuntimeException e) {
+					var f = entityProcessor.getMethodProcessor().process(null, FieldCoordinates.coordinates(typeName, name), meta, method);
+					graphType.field(f);
+					interfaceBuilder.field(f);
+				} catch (NoSuchMethodException e) {
 					throw new RuntimeException("Failed to process method " + field, e);
 				}
-			}
+			});
 		}
 	}
 }
