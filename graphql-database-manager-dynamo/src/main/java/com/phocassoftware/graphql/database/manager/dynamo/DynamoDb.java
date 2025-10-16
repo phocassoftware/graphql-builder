@@ -15,6 +15,7 @@ package com.phocassoftware.graphql.database.manager.dynamo;
 import static com.phocassoftware.graphql.database.manager.util.TableCoreUtil.table;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Stopwatch;
 import com.phocassoftware.graphql.database.manager.DatabaseDriver;
 import com.phocassoftware.graphql.database.manager.DatabaseKey;
 import com.phocassoftware.graphql.database.manager.DatabaseQueryHistoryKey;
@@ -45,18 +46,10 @@ import com.google.common.hash.Hashing;
 import graphql.VisibleForTesting;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
@@ -291,54 +284,58 @@ public class DynamoDb extends DatabaseDriver {
 			return CompletableFuture.completedFuture(null);
 		}
 		if (items.size() > batchWriteSize) {
-			ArrayListMultimap<String, PutValue> byPartition = ArrayListMultimap.create();
-			items
-				.stream()
-				.forEach(t -> {
-					var key = mapWithKeys(t.getOrganisationId(), t.getEntity());
-					byPartition.put(key.get("organisationId").s(), t);
-				});
-
-			var futures = byPartition
-				.keySet()
-				.stream()
-				.map(key -> {
-					var partition = byPartition.get(key);
-
-					var toReturn = new CompletableFuture();
-					sendBackToBack(toReturn, Lists.partition(partition, batchWriteSize).iterator());
-					return toReturn;
-				})
-				.toArray(CompletableFuture[]::new);
-
-			return CompletableFuture.allOf(futures);
+			return  sendBackToBack(Lists.partition(items, batchWriteSize));
 		} else {
 			return nonConditionalBulkPutChunk(items);
 		}
 	}
 
-	private void sendBackToBack(CompletableFuture<?> atEnd, Iterator<List<PutValue>> it) {
-		nonConditionalBulkPutChunk(it.next())
-			.whenComplete((response, error) -> {
-				if (error != null) {
-					while (it.hasNext()) {
-						var f = it.next();
-						for (var e : f) {
-							e.fail(error);
-						}
-					}
-					atEnd.completeExceptionally(error);
-				} else {
-					if (it.hasNext()) {
-						sendBackToBack(atEnd, it);
-					} else {
-						atEnd.complete(null);
+	private CompletableFuture<?> sendBackToBack(Collection<List<PutValue>> it) {
+		var queue = new ConcurrentLinkedQueue<>(it);
+
+		List<CompletableFuture<?>> futures = new ArrayList<>();
+
+		for(int i = 0; i < 40; i++) {
+			var chunk = queue.poll();
+			if(chunk == null) {
+				break;
+			}
+			var atEnd = new CompletableFuture<>();
+			process(atEnd, queue, chunk);
+			futures.add(atEnd);
+		}
+		return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
+
+	}
+
+	private void process(CompletableFuture<?> atEnd, ConcurrentLinkedQueue<List<PutValue>> queue, List<PutValue> chunk) {
+		nonConditionalBulkPutChunk(chunk).whenComplete((response, error) -> {
+			if (error != null) {
+				List<PutValue> cursor;
+				while((cursor = queue.poll()) != null) {
+					for (var e : cursor) {
+						e.fail(error);
 					}
 				}
-			});
+
+				atEnd.completeExceptionally(error);
+			} else {
+				var next = queue.poll();
+				if (next != null) {
+					process(atEnd, queue, next);
+				} else {
+					atEnd.complete(null);
+				}
+			}
+		});
+
 	}
 
 	private CompletableFuture<?> putItems(int count, Map<String, List<WriteRequest>> data) {
+		var sw = Stopwatch.createStarted();
+
+		System.out.println(Objects.toIdentityString(data));
+
 		if (count > maxRetry) {
 			throw new RuntimeException("Failed to put items into dynamo after " + maxRetry + " attempts");
 		}
@@ -352,6 +349,7 @@ public class DynamoDb extends DatabaseDriver {
 							if (!response.unprocessedItems().isEmpty()) {
 								return putItems(count + 1, response.unprocessedItems());
 							} else {
+								System.out.println(Objects.toIdentityString(data) + " hello: " + data.get(entityTable).size() + " " + sw.elapsed());
 								return CompletableFuture.completedFuture(null);
 							}
 						});
