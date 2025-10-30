@@ -481,6 +481,21 @@ public class TypeInheritanceParsingTest {
 		assertTrue(exception.getMessage().contains("ERROR"));
 	}
 
+	@Test
+	void testOnOfOnRecordTypes() {
+		var result = execute(
+			"""
+				query {
+					findFish {
+						name
+					}
+				}
+				"""
+		);
+
+		assertTrue(result.getErrors().isEmpty());
+	}
+
 	private ExecutionResult execute(String query) {
 		return execute(query, null);
 	}
