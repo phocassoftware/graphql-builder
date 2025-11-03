@@ -12,6 +12,7 @@
 package com.phocassoftware.graphql.builder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.phocassoftware.graphql.builder.scalar.Fur;
 import com.phocassoftware.graphql.builder.scalar.Shape;
@@ -20,8 +21,10 @@ import graphql.ExecutionResult;
 import graphql.GraphQL;
 import graphql.introspection.IntrospectionWithDirectivesSupport;
 import graphql.scalars.ExtendedScalars;
+
 import java.util.List;
 import java.util.Map;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -36,9 +39,9 @@ public class ScalarTest {
 	@Test
 	public void testCatShape() throws ReflectiveOperationException {
 		var scalar = getField("Shape", "SCALAR");
-		assertEquals(null, scalar.get("description"));
+		assertNull(scalar.get("description"));
 		List<Map<String, String>> directive = (List<Map<String, String>>) scalar.get("appliedDirectives");
-		assertEquals("Capture", directive.get(0).get("name"));
+		assertEquals("Capture", directive.getFirst().get("name"));
 	}
 
 	public Map<String, Object> getField(String typeName, String kind) throws ReflectiveOperationException {

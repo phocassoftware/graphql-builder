@@ -12,7 +12,6 @@
 package com.phocassoftware.graphql.builder.type.directive;
 
 import com.phocassoftware.graphql.builder.annotations.Entity;
-import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.Mutation;
 import com.phocassoftware.graphql.builder.annotations.Query;
 import jakarta.validation.constraints.Max;

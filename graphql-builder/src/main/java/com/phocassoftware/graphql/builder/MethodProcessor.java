@@ -25,8 +25,6 @@ import graphql.introspection.Introspection;
 import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.FieldCoordinates;
-import graphql.schema.GraphQLAppliedDirective;
-import graphql.schema.GraphQLAppliedDirectiveArgument;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLFieldDefinition;
@@ -217,7 +215,7 @@ class MethodProcessor {
 				return env -> env;
 			}
 			if (type.isAssignableFrom(GraphQLContext.class)) {
-				return env -> env.getGraphQlContext();
+				return DataFetchingEnvironment::getGraphQlContext;
 			}
 			return env -> {
 				var localContext = env.getLocalContext();

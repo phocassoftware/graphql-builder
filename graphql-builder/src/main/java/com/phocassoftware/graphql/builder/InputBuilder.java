@@ -52,9 +52,7 @@ public abstract class InputBuilder {
 			schemaType = graphTypeAnnotation.value();
 		}
 
-		String typeName = EntityUtil.getName(meta);
-
-		String inputName = typeName;
+		String inputName = EntityUtil.getName(meta);
 		if (schemaType != SchemaOption.INPUT) {
 			inputName += "Input";
 		}

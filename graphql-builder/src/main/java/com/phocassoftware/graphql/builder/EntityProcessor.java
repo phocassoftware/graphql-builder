@@ -96,7 +96,7 @@ public class EntityProcessor {
 	}
 
 	Set<GraphQLType> getAdditionalTypes() {
-		return entities.values().stream().flatMap(s -> s.types()).collect(Collectors.toSet());
+		return entities.values().stream().flatMap(EntityHolder::types).collect(Collectors.toSet());
 	}
 
 	public EntityHolder getEntity(Class<?> type) {
@@ -132,8 +132,7 @@ public class EntityProcessor {
 
 	public GraphQLOutputType getType(TypeMeta meta, Annotation[] annotations) {
 		for (var annotation : annotations) {
-			if (annotation instanceof Union) {
-				var union = (Union) annotation;
+			if (annotation instanceof Union union) {
 				return getUnionType(meta, union);
 			}
 		}
