@@ -15,6 +15,7 @@ import com.phocassoftware.graphql.builder.annotations.Scalar;
 import com.phocassoftware.graphql.builder.annotations.Union;
 import com.phocassoftware.graphql.builder.mapper.InputTypeBuilder;
 import graphql.Scalars;
+import graphql.introspection.Introspection;
 import graphql.schema.GraphQLAppliedDirective;
 import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLInputType;
@@ -161,8 +162,13 @@ public class EntityProcessor {
 		return getEntity(meta).getInputType(meta, annotations);
 	}
 
-	void addSchemaDirective(AnnotatedElement element, Class<?> location, Consumer<GraphQLAppliedDirective> builder) {
-		this.directives.addSchemaDirective(element, location, builder);
+	void addSchemaDirective(
+		AnnotatedElement element,
+		Class<?> location,
+		Consumer<GraphQLAppliedDirective> builder,
+		Introspection.DirectiveLocation directiveLocation
+	) {
+		this.directives.addSchemaDirective(element, location, builder, directiveLocation);
 	}
 
 	public InputTypeBuilder getResolver(TypeMeta meta) {

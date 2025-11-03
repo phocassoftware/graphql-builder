@@ -15,6 +15,7 @@ import com.phocassoftware.graphql.builder.annotations.Entity;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.GraphQLIgnore;
 import com.phocassoftware.graphql.builder.exceptions.DuplicateMethodNameException;
+import graphql.introspection.Introspection;
 import graphql.schema.FieldCoordinates;
 import graphql.schema.GraphQLInterfaceType;
 import graphql.schema.GraphQLNamedOutputType;
@@ -107,7 +108,7 @@ public abstract class TypeBuilder {
 
 		boolean interfaceable = type.isInterface() || Modifier.isAbstract(type.getModifiers());
 		if (!meta.isDirect() && (interfaceable || unmappedGenerics)) {
-			entityProcessor.addSchemaDirective(type, type, interfaceBuilder::withAppliedDirective);
+			entityProcessor.addSchemaDirective(type, type, interfaceBuilder::withAppliedDirective, Introspection.DirectiveLocation.OBJECT);
 			GraphQLInterfaceType built = interfaceBuilder.build();
 
 			entityProcessor
@@ -138,7 +139,7 @@ public abstract class TypeBuilder {
 			return built;
 		}
 
-		entityProcessor.addSchemaDirective(type, type, graphType::withAppliedDirective);
+		entityProcessor.addSchemaDirective(type, type, graphType::withAppliedDirective, Introspection.DirectiveLocation.OBJECT);
 		var built = graphType.build();
 		entityProcessor
 			.getCodeRegistry()

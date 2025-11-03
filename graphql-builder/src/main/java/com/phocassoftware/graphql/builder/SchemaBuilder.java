@@ -12,6 +12,7 @@
 package com.phocassoftware.graphql.builder;
 
 import com.phocassoftware.graphql.builder.annotations.*;
+import graphql.introspection.Introspection;
 import graphql.scalars.ExtendedScalars;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchema;
@@ -86,7 +87,7 @@ public class SchemaBuilder {
 		directives.getSchemaDirective().forEach(builder::additionalDirective);
 
 		for (var schema : schemaConfiguration) {
-			this.directives.addSchemaDirective(schema, schema, builder::withSchemaAppliedDirective);
+			this.directives.addSchemaDirective(schema, schema, builder::withSchemaAppliedDirective, Introspection.DirectiveLocation.SCHEMA);
 		}
 		return builder;
 	}

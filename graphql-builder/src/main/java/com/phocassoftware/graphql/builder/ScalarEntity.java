@@ -14,6 +14,7 @@ package com.phocassoftware.graphql.builder;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.Scalar;
 import com.phocassoftware.graphql.builder.mapper.InputTypeBuilder;
+import graphql.introspection.Introspection;
 import graphql.schema.Coercing;
 import graphql.schema.GraphQLNamedInputType;
 import graphql.schema.GraphQLNamedOutputType;
@@ -42,7 +43,7 @@ public class ScalarEntity extends EntityHolder {
 		Class<? extends Coercing> coerecing = type.getAnnotation(Scalar.class).value();
 		scalarType.coercing(coerecing.getDeclaredConstructor().newInstance());
 
-		directives.addSchemaDirective(type, type, scalarType::withAppliedDirective);
+		directives.addSchemaDirective(type, type, scalarType::withAppliedDirective, Introspection.DirectiveLocation.SCALAR);
 		this.scalar = scalarType.build();
 	}
 

@@ -17,7 +17,7 @@ import jakarta.validation.constraints.Size;
 
 @Entity(SchemaOption.INPUT)
 public class PropertiesInput {
-	@Size(min = 3)
+	@Size(min = 3) // INPUT_FIELD_DEFINITION
 	String name;
 
 	public String getName() {

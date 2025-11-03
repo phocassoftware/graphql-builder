@@ -21,6 +21,7 @@ import com.phocassoftware.graphql.builder.annotations.Subscription;
 import graphql.GraphQLContext;
 import graphql.GraphQLError;
 import graphql.execution.DataFetcherResult;
+import graphql.introspection.Introspection;
 import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.FieldCoordinates;
@@ -95,7 +96,12 @@ class MethodProcessor {
 	Builder process(AuthorizerSchema authorizer, FieldCoordinates coordinates, TypeMeta parentMeta, Method method, boolean shouldValidate) {
 		GraphQLFieldDefinition.Builder field = GraphQLFieldDefinition.newFieldDefinition();
 
-		entityProcessor.addSchemaDirective(method, method.getDeclaringClass(), field::withAppliedDirective);
+		entityProcessor.addSchemaDirective(
+			method,
+			method.getDeclaringClass(),
+			field::withAppliedDirective,
+			Introspection.DirectiveLocation.FIELD_DEFINITION
+		);
 
 		var deprecated = method.getAnnotation(GraphQLDeprecated.class);
 		if (deprecated != null) {
@@ -127,7 +133,12 @@ class MethodProcessor {
 				argument.description(description.value());
 			}
 
-			entityProcessor.addSchemaDirective(parameter, method.getDeclaringClass(), argument::withAppliedDirective);
+			entityProcessor.addSchemaDirective(
+				parameter,
+				method.getDeclaringClass(),
+				argument::withAppliedDirective,
+				Introspection.DirectiveLocation.ARGUMENT_DEFINITION
+			);
 
 			argument.name(EntityUtil.getName(parameter.getName(), parameter));
 			// TODO: argument.defaultValue(defaultValue)

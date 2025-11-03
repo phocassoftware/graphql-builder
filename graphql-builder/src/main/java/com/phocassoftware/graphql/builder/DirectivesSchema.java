@@ -13,6 +13,7 @@ package com.phocassoftware.graphql.builder;
 
 import com.phocassoftware.graphql.builder.annotations.DataFetcherWrapper;
 import com.phocassoftware.graphql.builder.annotations.Directive;
+import graphql.introspection.Introspection;
 import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.GraphQLAppliedDirective;
@@ -191,12 +192,19 @@ class DirectivesSchema {
 		}
 	}
 
-	public void addSchemaDirective(AnnotatedElement element, Class<?> location, Consumer<GraphQLAppliedDirective> builder) {
+	public void addSchemaDirective(
+		AnnotatedElement element,
+		Class<?> location,
+		Consumer<GraphQLAppliedDirective> builder,
+		Introspection.DirectiveLocation directiveLocation
+	) {
 		for (Annotation annotation : element.getAnnotations()) {
 			var processor = this.directiveProcessors.get(annotation.annotationType());
 			if (processor != null) {
 				try {
-					processor.apply(annotation, builder);
+					if (processor.getDirective().validLocations().contains(directiveLocation)) {
+						processor.apply(annotation, builder);
+					}
 				} catch (InvocationTargetException | IllegalAccessException e) {
 					throw new RuntimeException("Could not process applied directive: " + location.getName());
 				}
