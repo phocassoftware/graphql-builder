@@ -13,5 +13,5 @@ package com.phocassoftware.graphql.builder.type.directive;
 
 import com.phocassoftware.graphql.builder.SchemaConfiguration;
 
-@Capture(color = "top")
+@Capture(color = "top") // SCHEMA
 public class CatSchema implements SchemaConfiguration {}

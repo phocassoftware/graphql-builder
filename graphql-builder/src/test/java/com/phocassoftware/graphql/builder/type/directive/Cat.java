@@ -16,10 +16,20 @@ import com.phocassoftware.graphql.builder.annotations.Mutation;
 import com.phocassoftware.graphql.builder.annotations.Query;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 @Entity
 public class Cat {
+	@NotNull // ENUM
+	public enum CatSize {
+		@Size(min = 1) // ENUM_VALUE
+		LARGE,
+		SMALL,
+	}
+
+	@Size(min = 2) // FIELD_DEFINITION
+	private final CatSize size = CatSize.SMALL;
 
 	public boolean isCalico() {
 		return true;
@@ -29,12 +39,16 @@ public class Cat {
 		return 3;
 	}
 
+	public CatSize getSize() {
+		return this.size;
+	}
+
 	public boolean getFur() {
 		return true;
 	}
 
 	@Query
-	@Capture(color = "meow")
+	@Capture(color = "meow") // FIELD_DEFINITION
 	public static Cat getCat() {
 		return new Cat();
 	}
@@ -46,8 +60,16 @@ public class Cat {
 	}
 
 	@Mutation
-	public static String setName(@Size(min = 3) String name) {
+	public static String setName(
+		@Size(min = 3) // ARGUMENT_DEFINITION
+		String name
+	) {
 		return name;
+	}
+
+	@Mutation
+	public static String setProperties(PropertiesInput properties) {
+		return Cat.setName(properties.getName());
 	}
 
 	@Mutation

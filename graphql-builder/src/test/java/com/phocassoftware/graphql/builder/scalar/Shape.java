@@ -21,7 +21,7 @@ import graphql.schema.CoercingSerializeException;
 @Capture
 public class Shape {
 
-	private String input;
+	private final String input;
 
 	public Shape(String input) {
 		this.input = input;

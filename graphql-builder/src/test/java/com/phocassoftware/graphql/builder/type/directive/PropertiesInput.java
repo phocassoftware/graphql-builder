@@ -9,18 +9,26 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.phocassoftware.graphql.builder.scalar;
+package com.phocassoftware.graphql.builder.type.directive;
 
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
+import com.phocassoftware.graphql.builder.annotations.Entity;
+import com.phocassoftware.graphql.builder.annotations.SchemaOption;
+import jakarta.validation.constraints.Size;
 
-import com.phocassoftware.graphql.builder.annotations.Directive;
-import graphql.introspection.Introspection.DirectiveLocation;
+@Entity(SchemaOption.INPUT)
+public class PropertiesInput {
+	@Size(min = 3) // INPUT_FIELD_DEFINITION
+	String name;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
+	public String getName() {
+		return name;
+	}
 
-@Directive(DirectiveLocation.SCALAR)
-@Retention(RUNTIME)
-@Target({ ElementType.TYPE })
-public @interface Capture {}
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public PropertiesInput(String name) {
+		this.name = name;
+	}
+}

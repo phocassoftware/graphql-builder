@@ -13,6 +13,7 @@ package com.phocassoftware.graphql.builder;
 
 import com.phocassoftware.graphql.builder.annotations.DataFetcherWrapper;
 import com.phocassoftware.graphql.builder.annotations.Directive;
+import graphql.introspection.Introspection;
 import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.GraphQLAppliedDirective;
@@ -26,9 +27,7 @@ import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 class DirectivesSchema {
@@ -155,48 +154,59 @@ class DirectivesSchema {
 	}
 
 	private CompletableFuture<Object> applyRestrict(RestrictType restrict, Object response) {
-		if (response instanceof List) {
-			return restrict.filter((List) response);
-		} else if (response instanceof Publisher) {
-			return CompletableFuture.completedFuture(new FilteredPublisher((Publisher) response, restrict));
-		} else if (response instanceof Optional) {
-			var optional = (Optional) response;
-			if (optional.isEmpty()) {
-				return CompletableFuture.completedFuture(response);
+		switch (response) {
+			case List list -> {
+				return restrict.filter(list);
 			}
-			var target = optional.get();
-			if (target instanceof List) {
-				return restrict.filter((List) target);
-			} else {
+			case Publisher publisher -> {
+				return CompletableFuture.completedFuture(new FilteredPublisher(publisher, restrict));
+			}
+			case Optional optional -> {
+				if (optional.isEmpty()) {
+					return CompletableFuture.completedFuture(response);
+				}
+				var target = optional.get();
+				if (target instanceof List) {
+					return restrict.filter((List) target);
+				} else {
+					return restrict
+						.allow(target)
+						.thenApply(allow -> {
+							if (allow == Boolean.TRUE) {
+								return response;
+							} else {
+								return Optional.empty();
+							}
+						});
+				}
+			}
+			case null, default -> {
 				return restrict
-					.allow(target)
+					.allow(response)
 					.thenApply(allow -> {
 						if (allow == Boolean.TRUE) {
 							return response;
 						} else {
-							return Optional.empty();
+							return null;
 						}
 					});
 			}
-		} else {
-			return restrict
-				.allow(response)
-				.thenApply(allow -> {
-					if (allow == Boolean.TRUE) {
-						return response;
-					} else {
-						return null;
-					}
-				});
 		}
 	}
 
-	public void addSchemaDirective(AnnotatedElement element, Class<?> location, Consumer<GraphQLAppliedDirective> builder) {
+	public void addSchemaDirective(
+		AnnotatedElement element,
+		Class<?> location,
+		Consumer<GraphQLAppliedDirective> builder,
+		Introspection.DirectiveLocation directiveLocation
+	) {
 		for (Annotation annotation : element.getAnnotations()) {
 			var processor = this.directiveProcessors.get(annotation.annotationType());
 			if (processor != null) {
 				try {
-					processor.apply(annotation, builder);
+					if (processor.getDirective().validLocations().contains(directiveLocation)) {
+						processor.apply(annotation, builder);
+					}
 				} catch (InvocationTargetException | IllegalAccessException e) {
 					throw new RuntimeException("Could not process applied directive: " + location.getName());
 				}
