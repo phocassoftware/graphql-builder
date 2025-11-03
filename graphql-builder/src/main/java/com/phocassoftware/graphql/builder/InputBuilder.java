@@ -128,21 +128,23 @@ public abstract class InputBuilder {
 						GraphQLInputObjectField.Builder field = GraphQLInputObjectField.newInputObjectField();
 						field.name(name.get());
 
-						entityProcessor.addSchemaDirective(
-							method,
-							meta.getType(),
-							field::withAppliedDirective,
-							Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
-						);
-
-						try {
-							var classField = method.getDeclaringClass().getDeclaredField(name.get());
-							entityProcessor.addSchemaDirective(
-								classField,
+						entityProcessor
+							.addSchemaDirective(
+								method,
 								meta.getType(),
 								field::withAppliedDirective,
 								Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
 							);
+
+						try {
+							var classField = method.getDeclaringClass().getDeclaredField(name.get());
+							entityProcessor
+								.addSchemaDirective(
+									classField,
+									meta.getType(),
+									field::withAppliedDirective,
+									Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
+								);
 						} catch (NoSuchFieldException ignored) {}
 
 						TypeMeta innerMeta = new TypeMeta(meta, method.getParameterTypes()[0], method.getGenericParameterTypes()[0], method.getParameters()[0]);
@@ -202,20 +204,22 @@ public abstract class InputBuilder {
 
 					var classProperties = meta.getType().getDeclaredFields();
 					for (var classProperty : classProperties) {
-						entityProcessor.addSchemaDirective(
-							classProperty,
+						entityProcessor
+							.addSchemaDirective(
+								classProperty,
+								meta.getType(),
+								field::withAppliedDirective,
+								Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
+							);
+					}
+
+					entityProcessor
+						.addSchemaDirective(
+							parameter,
 							meta.getType(),
 							field::withAppliedDirective,
 							Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
 						);
-					}
-
-					entityProcessor.addSchemaDirective(
-						parameter,
-						meta.getType(),
-						field::withAppliedDirective,
-						Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
-					);
 					TypeMeta innerMeta = new TypeMeta(meta, parameter.getType(), parameter.getParameterizedType(), parameter);
 					var entity = entityProcessor.getEntity(innerMeta);
 					var inputType = entity.getInputType(innerMeta, parameter.getAnnotations());
@@ -271,12 +275,13 @@ public abstract class InputBuilder {
 							GraphQLInputObjectField.Builder fieldBuilder = GraphQLInputObjectField.newInputObjectField();
 							fieldBuilder.name(name);
 
-							entityProcessor.addSchemaDirective(
-								field,
-								meta.getType(),
-								fieldBuilder::withAppliedDirective,
-								Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
-							);
+							entityProcessor
+								.addSchemaDirective(
+									field,
+									meta.getType(),
+									fieldBuilder::withAppliedDirective,
+									Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
+								);
 							TypeMeta innerMeta = new TypeMeta(meta, field.getType(), field.getGenericType(), field);
 							var entity = entityProcessor.getEntity(innerMeta);
 							var inputType = entity.getInputType(innerMeta, field.getAnnotations());
