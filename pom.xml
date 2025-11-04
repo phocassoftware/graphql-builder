@@ -22,7 +22,7 @@
 	<packaging>pom</packaging>
 
 	<properties>
-		<jackson.version>2.20.0</jackson.version>
+		<jackson.version>2.20.1</jackson.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 
@@ -63,7 +63,7 @@
 			<dependency>
 				<groupId>software.amazon.awssdk</groupId>
 				<artifactId>bom</artifactId>
-				<version>2.37.1</version>
+				<version>2.37.3</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
@@ -75,7 +75,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.14.0</version>
+				<version>3.14.1</version>
 				<configuration>
 					<source>21</source>
 					<target>21</target>
@@ -84,7 +84,7 @@
 			</plugin>
 			<plugin>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<version>3.5.3</version>
+				<version>3.5.4</version>
 			</plugin>
 			<plugin>
 				<groupId>net.revelc.code.formatter</groupId>
