@@ -22,10 +22,11 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.extension.*;
 import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.Database;
 import com.phocassoftware.graphql.database.manager.VirtualDatabase;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;
-import com.phocassoftware.graphql.database.manager.test.annotations.ProviderFunction;
+import com.phocassoftware.graphql.database.manager.test.annotations.*;
 import com.phocassoftware.graphql.database.manager.test.annotations.TestDatabase;
 
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
@@ -61,9 +62,9 @@ public final class TestDatabaseProvider implements ParameterResolver, BeforeEach
 		var testDatabase = getTestDatabase(testMethod);
 
 		if (testDatabase != null) {
-			return Stream
-				.of(testDatabase.providers())
-				.map(t -> create(t))
+			return testDatabase
+				.providers()
+				.stream()
 				.anyMatch(provider -> parameterContext.getParameter().getType().isAssignableFrom(provider.type()));
 		}
 
@@ -89,11 +90,14 @@ public final class TestDatabaseProvider implements ParameterResolver, BeforeEach
 	public void beforeEach(ExtensionContext extensionContext) throws Exception {
 		var wrapper = getServer();
 		final var testMethod = extensionContext.getRequiredTestMethod();
+
+		TestDatabaseSetup setup;
+
 		var testDatabase = getTestDatabase(testMethod);
 
 		var classPath = testDatabase.classPath();
 		var hashed = testDatabase.hashed();
-		var objectMapper = testDatabase.objectMapper().getConstructor().newInstance().get();
+		var objectMapper = testDatabase.objectMapper();
 
 		final var withHistory = Arrays
 			.stream(testMethod.getParameters())
@@ -126,9 +130,9 @@ public final class TestDatabaseProvider implements ParameterResolver, BeforeEach
 					} else if (type.isAssignableFrom(Database.class)) {
 						return provider.getDatabase();
 					} else {
-						var builder = Stream
-							.of(testDatabase.providers())
-							.map(t -> create(t))
+						var builder = testDatabase
+							.providers()
+							.stream()
 							.filter(p -> type.isAssignableFrom(p.type()))
 							.findAny()
 							.orElse(null);
@@ -180,19 +184,37 @@ public final class TestDatabaseProvider implements ParameterResolver, BeforeEach
 
 	}
 
-	private TestDatabase getTestDatabase(AnnotatedElement annotatedElement) {
-		var annotation = annotatedElement.getAnnotation(TestDatabase.class);
-		if (annotation != null) {
-			return annotation;
-		}
-		for (var a : annotatedElement.getAnnotations()) {
-			annotation = getTestDatabase(a.annotationType());
-			if (annotation != null) {
-				return annotation;
+	private TestDatabaseSetup getTestDatabase(AnnotatedElement annotatedElement) {
+		try {
+			var annotation = annotatedElement.getAnnotation(TestDatabase.class);
+			var classBased = annotatedElement.getAnnotation(TestDatabaseBuilder.class);
+			if (annotation == null && classBased == null) {
+				for (var a : annotatedElement.getAnnotations()) {
+					var setup = getTestDatabase(a.annotationType());
+					if (setup != null) {
+						return setup;
+					}
+				}
 			}
+			if (annotation != null) {
+				var providers = Stream
+					.of(annotation.providers())
+					.map(t -> create(t))
+					.toList();
+
+				var objectMapper = annotation.objectMapper().getConstructor().newInstance().get();
+				return new TestDatabaseAnnotationSetup(annotation.classPath(), annotation.hashed(), objectMapper, providers);
+			}
+
+			return classBased.value().getConstructor().newInstance();
+
+		} catch (ReflectiveOperationException e) {
+			throw new RuntimeException(e);
 		}
-		return null;
 	}
 
 	record ServerWrapper(DynamoDbClient client, DynamoDbAsyncClient clientAsync, DynamoDbStreamsAsyncClient streamClient) {}
+
+	record TestDatabaseAnnotationSetup(String classPath, boolean hashed, ObjectMapper objectMapper, List<? extends ProviderFunction<?>> providers) implements
+		TestDatabaseSetup {}
 }
