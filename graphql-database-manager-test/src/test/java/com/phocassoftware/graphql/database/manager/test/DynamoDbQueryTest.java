@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Assertions;
 
 final class DynamoDbQueryTest {
 
-	@TestDatabase
+	@TestDatabaseClassBased
 	void testSimpleQuery(final Database db) throws InterruptedException, ExecutionException {
 		db.put(new SimpleTable("garry")).get();
 		db.put(new SimpleTable("bob")).get();

@@ -9,29 +9,22 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-
 package com.phocassoftware.graphql.database.manager.test.annotations;
 
-import java.lang.annotation.*;
-import java.util.function.Supplier;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
+import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.phocassoftware.graphql.database.manager.test.TestDatabaseProvider;
 
-@Target(ElementType.ANNOTATION_TYPE)
-@Retention(RetentionPolicy.RUNTIME)
-@Test
-@ExtendWith(TestDatabaseProvider.class)
-public @interface TestDatabase {
-	boolean hashed() default false;
+public interface TestDatabaseSetup {
 
-	String classPath() default "";
+	default List<? extends ProviderFunction<?>> providers() {
+		return List.of();
+	}
 
-	Class<? extends Supplier<ObjectMapper>> objectMapper();
+	String classPath();
 
-	Class<? extends ProviderFunction<?>>[] providers() default {};
+	boolean hashed();
+
+	ObjectMapper objectMapper();
 
 }

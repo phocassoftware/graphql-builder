@@ -25,13 +25,6 @@ import com.phocassoftware.graphql.database.manager.test.TestDatabaseProvider;
 @Retention(RetentionPolicy.RUNTIME)
 @Test
 @ExtendWith(TestDatabaseProvider.class)
-public @interface TestDatabase {
-	boolean hashed() default false;
-
-	String classPath() default "";
-
-	Class<? extends Supplier<ObjectMapper>> objectMapper();
-
-	Class<? extends ProviderFunction<?>>[] providers() default {};
-
+public @interface TestDatabaseBuilder {
+	Class<? extends TestDatabaseSetup> value();
 }
