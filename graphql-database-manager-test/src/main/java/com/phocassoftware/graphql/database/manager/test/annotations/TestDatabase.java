@@ -33,6 +33,5 @@ public @interface TestDatabase {
 	Class<? extends Supplier<ObjectMapper>> objectMapper();
 
 	Class<? extends ProviderFunction<?>>[] providers() default {};
-	
-	
+
 }
