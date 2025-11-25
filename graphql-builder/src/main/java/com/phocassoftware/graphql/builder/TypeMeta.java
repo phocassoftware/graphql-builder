@@ -202,7 +202,7 @@ public class TypeMeta {
 			}
 			return;
 		}
-		if(DataFetcherResult.class.isAssignableFrom(type)) {
+		if (DataFetcherResult.class.isAssignableFrom(type)) {
 			types.add(type);
 			genericType = ((ParameterizedType) genericType).getActualTypeArguments()[0];
 			if (genericType instanceof ParameterizedType) {
