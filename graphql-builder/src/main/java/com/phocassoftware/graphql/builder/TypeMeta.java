@@ -12,6 +12,9 @@
 package com.phocassoftware.graphql.builder;
 
 import com.phocassoftware.graphql.builder.annotations.InnerNullable;
+
+import graphql.execution.DataFetcherResult;
+
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -188,6 +191,18 @@ public class TypeMeta {
 		}
 		if (CompletableFuture.class.isAssignableFrom(type)) {
 			flags.add(Flag.ASYNC);
+			types.add(type);
+			genericType = ((ParameterizedType) genericType).getActualTypeArguments()[0];
+			if (genericType instanceof ParameterizedType) {
+				process((Class<?>) ((ParameterizedType) genericType).getRawType(), genericType, element);
+			} else if (genericType instanceof TypeVariable) {
+				processGeneric(parent, (TypeVariable) genericType, element);
+			} else {
+				process((Class<?>) genericType, null, element);
+			}
+			return;
+		}
+		if(DataFetcherResult.class.isAssignableFrom(type)) {
 			types.add(type);
 			genericType = ((ParameterizedType) genericType).getActualTypeArguments()[0];
 			if (genericType instanceof ParameterizedType) {

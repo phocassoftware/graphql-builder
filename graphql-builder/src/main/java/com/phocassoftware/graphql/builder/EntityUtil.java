@@ -98,6 +98,11 @@ class EntityUtil {
 			} else {
 				name = method.getName().substring("is".length(), "is".length() + 1).toLowerCase() + method.getName().substring("is".length() + 1);
 			}
+
+			if (fieldSpecifiesIgnore(method, name)) {
+				return Optional.empty();
+			}
+
 			return Optional.of(getName(name, method));
 		}
 		return Optional.empty();
@@ -122,10 +127,30 @@ class EntityUtil {
 		} else if (method.getName().matches("set[A-Z].*")) {
 			if (method.getParameterCount() == 1 && !method.isAnnotationPresent(InputIgnore.class)) {
 				String name = method.getName().substring("set".length(), "set".length() + 1).toLowerCase() + method.getName().substring("set".length() + 1);
+
+				if (fieldSpecifiesIgnore(method, name)) {
+					return Optional.empty();
+				}
+
 				return Optional.of(getName(name, method));
 			}
 		}
 		return Optional.empty();
+	}
+
+	static boolean fieldSpecifiesIgnore(Method method, String name) {
+		var fields = method.getDeclaringClass().getDeclaredFields();
+		for (var field : fields) {
+			if (!field.getName().equals(name)) {
+				continue;
+			}
+			if (!field.isAnnotationPresent(GraphQLIgnore.class)) {
+				return false;
+			}
+
+			return field.getType().equals(method.getReturnType());
+		}
+		return false;
 	}
 
 	static String getName(String fallback, AnnotatedElement... annotated) {

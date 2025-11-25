@@ -14,6 +14,7 @@ package com.phocassoftware.graphql.builder.context;
 import com.phocassoftware.graphql.builder.annotations.Context;
 import com.phocassoftware.graphql.builder.annotations.Query;
 import graphql.GraphQLContext;
+import graphql.execution.DataFetcherResult;
 import graphql.schema.DataFetchingEnvironment;
 
 public class Queries {
@@ -46,5 +47,18 @@ public class Queries {
 	@Query
 	public static boolean missingContext(GraphContext notPresent) {
 		return false;
+	}
+
+	@Query
+	public static DataFetcherResult<Person> localContext(GraphContext context) {
+		return DataFetcherResult.<Person>newResult().data(new Person()).localContext(new GraphContext("John")).build();
+	}
+
+	public static class Person {
+
+		public String getName(GraphContext context) {
+			return context.getSomething();
+		}
+
 	}
 }
