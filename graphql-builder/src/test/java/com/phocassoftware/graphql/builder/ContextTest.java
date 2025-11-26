@@ -64,6 +64,18 @@ public class ContextTest {
 		assertTrue(error.getMessage().contains("Context object notPresent not found"));
 	}
 
+	@Test
+	public void testLocalContext() throws ReflectiveOperationException {
+		var response = execute("""
+			query {
+				localContext {
+					name
+				}
+			}
+			""", b -> b.graphQLContext(c -> c.of("context", new GraphContext("not john")))).getData();
+		assertEquals(Map.of("localContext", Map.of("name", "John")), response);
+	}
+
 	private ExecutionResult execute(String query, Consumer<ExecutionInput.Builder> modify) {
 		GraphQL schema = GraphQL
 			.newGraphQL(new IntrospectionWithDirectivesSupport().apply(SchemaBuilder.build("com.phocassoftware.graphql.builder.context")))
