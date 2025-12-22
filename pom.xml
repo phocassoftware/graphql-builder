@@ -15,14 +15,14 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.phocassoftware</groupId>
 	<artifactId>graphql-builder-parent</artifactId>
-	<version>1.6.0-SNAPSHOT</version>
+	<version>1.9.0-SNAPSHOT</version>
 	<name>GraphQL Builder parent</name>
 	<description>library to make working with dynamodb and graphql easy as well as building a graphql schema from a model using reflection</description>
 	<url>https://github.com/phocassoftware/graphql-builder</url>
 	<packaging>pom</packaging>
 
 	<properties>
-		<jackson.version>2.20.0</jackson.version>
+		<jackson.version>2.20.1</jackson.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 
@@ -63,7 +63,7 @@
 			<dependency>
 				<groupId>software.amazon.awssdk</groupId>
 				<artifactId>bom</artifactId>
-				<version>2.36.0</version>
+				<version>2.40.0</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
@@ -75,7 +75,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.14.0</version>
+				<version>3.14.1</version>
 				<configuration>
 					<source>21</source>
 					<target>21</target>
@@ -84,7 +84,7 @@
 			</plugin>
 			<plugin>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<version>3.5.3</version>
+				<version>3.5.4</version>
 			</plugin>
 			<plugin>
 				<groupId>net.revelc.code.formatter</groupId>
@@ -98,7 +98,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-release-plugin</artifactId>
-				<version>3.1.1</version>
+				<version>3.3.0</version>
 			</plugin>
 			<plugin>
 				<groupId>com.mycila</groupId>

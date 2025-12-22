@@ -9,18 +9,22 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.phocassoftware.graphql.builder.scalar;
+package com.phocassoftware.graphql.database.manager.test.annotations;
 
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
+import java.util.List;
 
-import com.phocassoftware.graphql.builder.annotations.Directive;
-import graphql.introspection.Introspection.DirectiveLocation;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
+public interface TestDatabaseSetup {
 
-@Directive(DirectiveLocation.SCALAR)
-@Retention(RUNTIME)
-@Target({ ElementType.TYPE })
-public @interface Capture {}
+	default List<? extends ProviderFunction<?>> providers() {
+		return List.of();
+	}
+
+	String classPath();
+
+	boolean hashed();
+
+	ObjectMapper objectMapper();
+
+}

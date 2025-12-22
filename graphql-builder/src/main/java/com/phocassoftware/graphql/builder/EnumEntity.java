@@ -16,6 +16,7 @@ import static graphql.schema.GraphQLEnumValueDefinition.newEnumValueDefinition;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.GraphQLIgnore;
 import com.phocassoftware.graphql.builder.mapper.InputTypeBuilder;
+import graphql.introspection.Introspection;
 import graphql.schema.GraphQLEnumType;
 import graphql.schema.GraphQLNamedInputType;
 import graphql.schema.GraphQLNamedOutputType;
@@ -52,7 +53,7 @@ public class EnumEntity extends EntityHolder {
 
 			enumType.value(valueDef.build());
 		}
-		directives.addSchemaDirective(type, type, enumType::withAppliedDirective);
+		directives.addSchemaDirective(type, type, enumType::withAppliedDirective, Introspection.DirectiveLocation.ENUM);
 		this.enumType = enumType.build();
 	}
 

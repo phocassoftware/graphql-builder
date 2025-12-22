@@ -15,6 +15,7 @@ import com.phocassoftware.graphql.builder.annotations.Scalar;
 import com.phocassoftware.graphql.builder.annotations.Union;
 import com.phocassoftware.graphql.builder.mapper.InputTypeBuilder;
 import graphql.Scalars;
+import graphql.introspection.Introspection;
 import graphql.schema.GraphQLAppliedDirective;
 import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLInputType;
@@ -95,7 +96,7 @@ public class EntityProcessor {
 	}
 
 	Set<GraphQLType> getAdditionalTypes() {
-		return entities.values().stream().flatMap(s -> s.types()).collect(Collectors.toSet());
+		return entities.values().stream().flatMap(EntityHolder::types).collect(Collectors.toSet());
 	}
 
 	public EntityHolder getEntity(Class<?> type) {
@@ -131,8 +132,7 @@ public class EntityProcessor {
 
 	public GraphQLOutputType getType(TypeMeta meta, Annotation[] annotations) {
 		for (var annotation : annotations) {
-			if (annotation instanceof Union) {
-				var union = (Union) annotation;
+			if (annotation instanceof Union union) {
 				return getUnionType(meta, union);
 			}
 		}
@@ -161,8 +161,13 @@ public class EntityProcessor {
 		return getEntity(meta).getInputType(meta, annotations);
 	}
 
-	void addSchemaDirective(AnnotatedElement element, Class<?> location, Consumer<GraphQLAppliedDirective> builder) {
-		this.directives.addSchemaDirective(element, location, builder);
+	void addSchemaDirective(
+		AnnotatedElement element,
+		Class<?> location,
+		Consumer<GraphQLAppliedDirective> builder,
+		Introspection.DirectiveLocation directiveLocation
+	) {
+		this.directives.addSchemaDirective(element, location, builder, directiveLocation);
 	}
 
 	public InputTypeBuilder getResolver(TypeMeta meta) {

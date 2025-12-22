@@ -23,10 +23,12 @@ import com.phocassoftware.graphql.builder.mapper.InputTypeBuilder;
 import com.phocassoftware.graphql.builder.mapper.ObjectFieldBuilder;
 import com.phocassoftware.graphql.builder.mapper.ObjectFieldBuilder.FieldMapper;
 import com.phocassoftware.graphql.builder.mapper.OneOfBuilder;
+import graphql.introspection.Introspection;
 import graphql.schema.GraphQLInputObjectField;
 import graphql.schema.GraphQLInputObjectType;
 import graphql.schema.GraphQLInputObjectType.Builder;
 import graphql.schema.GraphQLNamedInputType;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -50,9 +52,7 @@ public abstract class InputBuilder {
 			schemaType = graphTypeAnnotation.value();
 		}
 
-		String typeName = EntityUtil.getName(meta);
-
-		String inputName = typeName;
+		String inputName = EntityUtil.getName(meta);
 		if (schemaType != SchemaOption.INPUT) {
 			inputName += "Input";
 		}
@@ -74,7 +74,7 @@ public abstract class InputBuilder {
 
 		processFields(graphInputType);
 
-		entityProcessor.addSchemaDirective(type, type, graphInputType::withAppliedDirective);
+		entityProcessor.addSchemaDirective(type, type, graphInputType::withAppliedDirective, Introspection.DirectiveLocation.INPUT_OBJECT);
 		return graphInputType.build();
 	}
 
@@ -127,7 +127,26 @@ public abstract class InputBuilder {
 					if (name.isPresent()) {
 						GraphQLInputObjectField.Builder field = GraphQLInputObjectField.newInputObjectField();
 						field.name(name.get());
-						entityProcessor.addSchemaDirective(method, meta.getType(), field::withAppliedDirective);
+
+						entityProcessor
+							.addSchemaDirective(
+								method,
+								meta.getType(),
+								field::withAppliedDirective,
+								Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
+							);
+
+						try {
+							var classField = method.getDeclaringClass().getDeclaredField(name.get());
+							entityProcessor
+								.addSchemaDirective(
+									classField,
+									meta.getType(),
+									field::withAppliedDirective,
+									Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
+								);
+						} catch (NoSuchFieldException ignored) {}
+
 						TypeMeta innerMeta = new TypeMeta(meta, method.getParameterTypes()[0], method.getGenericParameterTypes()[0], method.getParameters()[0]);
 						var entity = entityProcessor.getEntity(innerMeta);
 						var inputType = entity.getInputType(innerMeta, method.getParameterAnnotations()[0]);
@@ -154,6 +173,7 @@ public abstract class InputBuilder {
 				try {
 					var name = EntityUtil.setter(method);
 					if (name.isPresent()) {
+
 						TypeMeta innerMeta = new TypeMeta(meta, method.getParameterTypes()[0], method.getGenericParameterTypes()[0], method.getParameters()[0]);
 						fieldMappers.add(FieldMapper.build(entityProcessor, innerMeta, name.get(), method));
 					}
@@ -181,7 +201,25 @@ public abstract class InputBuilder {
 				try {
 					GraphQLInputObjectField.Builder field = GraphQLInputObjectField.newInputObjectField();
 					field.name(parameter.getName());
-					entityProcessor.addSchemaDirective(parameter, meta.getType(), field::withAppliedDirective);
+
+					var classProperties = meta.getType().getDeclaredFields();
+					for (var classProperty : classProperties) {
+						entityProcessor
+							.addSchemaDirective(
+								classProperty,
+								meta.getType(),
+								field::withAppliedDirective,
+								Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
+							);
+					}
+
+					entityProcessor
+						.addSchemaDirective(
+							parameter,
+							meta.getType(),
+							field::withAppliedDirective,
+							Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
+						);
 					TypeMeta innerMeta = new TypeMeta(meta, parameter.getType(), parameter.getParameterizedType(), parameter);
 					var entity = entityProcessor.getEntity(innerMeta);
 					var inputType = entity.getInputType(innerMeta, parameter.getAnnotations());
@@ -236,7 +274,14 @@ public abstract class InputBuilder {
 							String name = EntityUtil.getName(field.getName(), field);
 							GraphQLInputObjectField.Builder fieldBuilder = GraphQLInputObjectField.newInputObjectField();
 							fieldBuilder.name(name);
-							entityProcessor.addSchemaDirective(field, meta.getType(), fieldBuilder::withAppliedDirective);
+
+							entityProcessor
+								.addSchemaDirective(
+									field,
+									meta.getType(),
+									fieldBuilder::withAppliedDirective,
+									Introspection.DirectiveLocation.INPUT_FIELD_DEFINITION
+								);
 							TypeMeta innerMeta = new TypeMeta(meta, field.getType(), field.getGenericType(), field);
 							var entity = entityProcessor.getEntity(innerMeta);
 							var inputType = entity.getInputType(innerMeta, field.getAnnotations());
