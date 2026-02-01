@@ -59,6 +59,7 @@ public class Queries {
 	@GraphQLDescription("record Type")
 	static final record InputType(
 		@GraphQLDescription("the name") String name,
-	  	int age,
-	  	Optional<Integer> weight) {}
+		int age,
+		Optional<Integer> weight
+	) {}
 }

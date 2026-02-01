@@ -30,10 +30,12 @@ import org.junit.jupiter.api.Test;
 //does not test all of records as needs newer version of java. But Classes that look like records
 public class RecordTest {
 
-
 	@Test
 	public void testRecordInheritance() {
-		var response = execute("query { recordInheritanceTest { ... on CatRecord { name, somethingToDoWithCats, type } ... on DogRecord { name, somethingToDoWithDogs, type } } }", null);
+		var response = execute(
+			"query { recordInheritanceTest { ... on CatRecord { name, somethingToDoWithCats, type } ... on DogRecord { name, somethingToDoWithDogs, type } } }",
+			null
+		);
 		assertTrue(response.getErrors().isEmpty(), () -> response.getErrors().toString());
 		Map<String, List<Map<String, String>>> data = response.getData();
 		var results = data.get("recordInheritanceTest");
@@ -42,13 +44,15 @@ public class RecordTest {
 		assertEquals(Map.of("name", "Mavi", "somethingToDoWithCats", "LikesCheese", "type", "Cat"), results.get(1));
 	}
 
-
 	@Test
 	public void testEntireContext() {
-		var type = Map.of(
-			"name", "foo",
-			"age", 4
-		);
+		var type = Map
+			.of(
+				"name",
+				"foo",
+				"age",
+				4
+			);
 		Map<String, Map<String, Object>> response = execute(
 			"query passthrough($type: InputTypeInput!){passthrough(type: $type) {name age weight}} ",
 			Map.of("type", type)

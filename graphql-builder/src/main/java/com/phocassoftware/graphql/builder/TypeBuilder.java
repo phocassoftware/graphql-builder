@@ -197,15 +197,17 @@ public abstract class TypeBuilder {
 		@Override
 		protected void processFields(String typeName, Builder graphType, graphql.schema.GraphQLInterfaceType.Builder interfaceBuilder) {
 			var type = meta.getType();
-			
-			var fieldsByName = Arrays.stream(type.getDeclaredFields())
+
+			var fieldsByName = Arrays
+				.stream(type.getDeclaredFields())
 				.filter(field -> !field.isSynthetic())
 				.filter(field -> !Modifier.isStatic(field.getModifiers()))
 				.collect(java.util.stream.Collectors.toMap(f -> f.getName(), f -> f, (a, b) -> a));
 
 			var duplicateMethodNames = new HashSet<String>();
 
-			Arrays.stream(type.getMethods())
+			Arrays
+				.stream(type.getMethods())
 				.filter(method -> !method.isSynthetic())
 				.filter(method -> !method.getDeclaringClass().equals(Object.class))
 				.filter(method -> !method.isAnnotationPresent(GraphQLIgnore.class))
