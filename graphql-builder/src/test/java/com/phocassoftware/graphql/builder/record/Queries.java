@@ -14,6 +14,8 @@ package com.phocassoftware.graphql.builder.record;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.InnerNullable;
 import com.phocassoftware.graphql.builder.annotations.Query;
+import com.phocassoftware.graphql.builder.annotations.Union;
+
 import java.util.List;
 import java.util.Optional;
 import javax.annotation.Nullable;
@@ -48,6 +50,16 @@ public class Queries {
 		return type;
 	}
 
+	@Query
+	@Union({ DogRecord.class, CatRecord.class })
+	public static List<AnimalInterface> recordInheritanceTest() {
+		return List.of(new DogRecord("Lola", "LikesBones", Optional.of("fluffy")), new CatRecord("Mavi", "LikesCheese", Optional.of("Angry")));
+	}
+
 	@GraphQLDescription("record Type")
-	static final record InputType(@GraphQLDescription("the name") String name, int age, Optional<Integer> weight) {}
+	static final record InputType(
+		@GraphQLDescription("the name") String name,
+		int age,
+		Optional<Integer> weight
+	) {}
 }
