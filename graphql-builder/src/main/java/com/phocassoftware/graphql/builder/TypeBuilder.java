@@ -212,7 +212,6 @@ public abstract class TypeBuilder {
 				.filter(method -> !method.getDeclaringClass().equals(Object.class))
 				.filter(method -> !method.isAnnotationPresent(GraphQLIgnore.class))
 				.filter(method -> !Modifier.isStatic(method.getModifiers()))
-				.filter(method -> method.getParameterCount() == 0)
 				.filter(method -> !method.getReturnType().equals(void.class))
 				.filter(method -> !method.getName().startsWith("get") && !method.getName().startsWith("is"))
 				.forEach(method -> {
@@ -224,7 +223,7 @@ public abstract class TypeBuilder {
 						? EntityUtil.getName(field.getName(), field, method)
 						: method.getName();
 					if (!duplicateMethodNames.add(name)) {
-						return;
+						throw new DuplicateMethodNameException(typeName, name);
 					}
 					var f = entityProcessor.getMethodProcessor().process(null, FieldCoordinates.coordinates(typeName, name), meta, method);
 					graphType.field(f);

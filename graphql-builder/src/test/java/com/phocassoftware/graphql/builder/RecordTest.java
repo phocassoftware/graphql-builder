@@ -33,7 +33,7 @@ public class RecordTest {
 	@Test
 	public void testRecordInheritance() {
 		var response = execute(
-			"query { recordInheritanceTest { ... on CatRecord { name, somethingToDoWithCats, type } ... on DogRecord { name, somethingToDoWithDogs, type } } }",
+			"query { recordInheritanceTest { ... on CatRecord { name, somethingToDoWithCats, type, greet(greeting: \"Hello\") } ... on DogRecord { name, somethingToDoWithDogs, type } } }",
 			null
 		);
 		assertTrue(response.getErrors().isEmpty(), () -> response.getErrors().toString());
@@ -41,7 +41,7 @@ public class RecordTest {
 		var results = data.get("recordInheritanceTest");
 		assertEquals(2, results.size());
 		assertEquals(Map.of("name", "Lola", "somethingToDoWithDogs", "LikesBones", "type", "Dog"), results.get(0));
-		assertEquals(Map.of("name", "Mavi", "somethingToDoWithCats", "LikesCheese", "type", "Cat"), results.get(1));
+		assertEquals(Map.of("name", "Mavi", "somethingToDoWithCats", "LikesCheese", "type", "Cat", "greet", "Hello Mavi"), results.get(1));
 	}
 
 	@Test

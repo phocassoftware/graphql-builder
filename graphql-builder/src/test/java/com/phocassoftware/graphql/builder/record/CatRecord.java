@@ -21,4 +21,8 @@ public record CatRecord(
 	public AnimalType type() {
 		return AnimalType.Cat;
 	}
+
+	public String greet(String greeting) {
+		return greeting + " " + name;
+	}
 }
