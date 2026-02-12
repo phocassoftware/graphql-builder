@@ -28,7 +28,7 @@
         <junit.jupiter.version>6.0.1</junit.jupiter.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jackson.version>2.21.0</jackson.version>
-        <graphql.version>24.3</graphql.version>
+        <graphql.version>25.0</graphql.version>
     </properties>
 
     <licenses>
