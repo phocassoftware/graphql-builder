@@ -153,20 +153,20 @@ final class DynamoDbQueryBuilderTest {
 		Assertions.assertFalse(result.stream().anyMatch(x -> x.name == "big global"));
 	}
 
-    @TestDatabase
-    void testScanIndexForward(final Database db) throws InterruptedException, ExecutionException {
-        db.put(new Ticket("budgetId1:sales;trinkets:2020/10", "6 trinkets")).get();
-        db.put(new Ticket("budgetId1:sales;trinkets:2020/11", "7 trinkets")).get();
-        db.put(new Ticket("budgetId1:sales;trinkets:2020/12", "8 trinkets")).get();
-        db.put(new Ticket("budgetId1:sales;trinkets:2021/01", "9 trinkets")).get();
-        db.put(new Ticket("budgetId1:sales;trinkets:2021/02", "10 trinkets")).get();
+	@TestDatabase
+	void testScanIndexForward(final Database db) throws InterruptedException, ExecutionException {
+		db.put(new Ticket("budgetId1:sales;trinkets:2020/10", "6 trinkets")).get();
+		db.put(new Ticket("budgetId1:sales;trinkets:2020/11", "7 trinkets")).get();
+		db.put(new Ticket("budgetId1:sales;trinkets:2020/12", "8 trinkets")).get();
+		db.put(new Ticket("budgetId1:sales;trinkets:2021/01", "9 trinkets")).get();
+		db.put(new Ticket("budgetId1:sales;trinkets:2021/02", "10 trinkets")).get();
 
-        var forward = db.query(Ticket.class, builder -> builder.startsWith("budgetId1:").scanIndexForward(true)).get();
-        Assertions.assertEquals("budgetId1:sales;trinkets:2020/10", forward.get(0).getId());
-        Assertions.assertEquals("budgetId1:sales;trinkets:2021/02", forward.get(forward.size() - 1).getId());
+		var forward = db.query(Ticket.class, builder -> builder.startsWith("budgetId1:").scanIndexForward(true)).get();
+		Assertions.assertEquals("budgetId1:sales;trinkets:2020/10", forward.get(0).getId());
+		Assertions.assertEquals("budgetId1:sales;trinkets:2021/02", forward.get(forward.size() - 1).getId());
 
-        var reverse = db.query(Ticket.class, builder -> builder.startsWith("budgetId1:").scanIndexForward(false)).get();
-        Assertions.assertEquals("budgetId1:sales;trinkets:2021/02", reverse.get(0).getId());
-        Assertions.assertEquals("budgetId1:sales;trinkets:2020/10", reverse.get(reverse.size() - 1).getId());
-    }
+		var reverse = db.query(Ticket.class, builder -> builder.startsWith("budgetId1:").scanIndexForward(false)).get();
+		Assertions.assertEquals("budgetId1:sales;trinkets:2021/02", reverse.get(0).getId());
+		Assertions.assertEquals("budgetId1:sales;trinkets:2020/10", reverse.get(reverse.size() - 1).getId());
+	}
 }

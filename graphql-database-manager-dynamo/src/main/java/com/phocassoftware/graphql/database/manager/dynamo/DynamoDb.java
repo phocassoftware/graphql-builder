@@ -895,9 +895,9 @@ public class DynamoDb extends DatabaseDriver {
 							b.exclusiveStartKey(start);
 						}
 
-                        if (query.getScanIndexForward() != null) {
-                            b.scanIndexForward(query.getScanIndexForward());
-                        }
+						if (query.getScanIndexForward() != null) {
+							b.scanIndexForward(query.getScanIndexForward());
+						}
 					});
 			})
 			.subscribe(s);

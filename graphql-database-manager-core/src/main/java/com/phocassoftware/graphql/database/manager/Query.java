@@ -94,7 +94,7 @@ public class Query<T extends Table> {
 			Objects.equals(type, other.type) &&
 			Objects.equals(threadCount, other.threadCount) &&
 			Objects.equals(threadIndex, other.threadIndex)) &&
-            Objects.equals(scanIndexForward, other.scanIndexForward);
+			Objects.equals(scanIndexForward, other.scanIndexForward);
 	}
 
 	static boolean isPowerOfTwo(int n) {
