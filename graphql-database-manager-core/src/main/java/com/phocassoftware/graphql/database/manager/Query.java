@@ -21,8 +21,9 @@ public class Query<T extends Table> {
 	private final Integer limit;
 	private final Integer threadCount;
 	private final Integer threadIndex;
+	private final Boolean scanIndexForward;
 
-	Query(Class<T> type, String startsWith, String after, Integer limit, Integer threadCount, Integer threadIndex) {
+	Query(Class<T> type, String startsWith, String after, Integer limit, Integer threadCount, Integer threadIndex, Boolean scanIndexForward) {
 		if (type == null) {
 			throw new RuntimeException("type can not be null, did you forget to call .on(Table::class)?");
 		}
@@ -41,6 +42,7 @@ public class Query<T extends Table> {
 		this.limit = limit;
 		this.threadCount = threadCount;
 		this.threadIndex = threadIndex;
+		this.scanIndexForward = scanIndexForward;
 	}
 
 	public Class<T> getType() {
@@ -67,13 +69,17 @@ public class Query<T extends Table> {
 		return threadIndex;
 	}
 
+	public Boolean getScanIndexForward() {
+		return scanIndexForward;
+	}
+
 	public boolean hasLimit() {
 		return getLimit() != null;
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(after, limit, startsWith, type, threadIndex, threadCount);
+		return Objects.hash(after, limit, startsWith, type, threadIndex, threadCount, scanIndexForward);
 	}
 
 	@Override
@@ -87,7 +93,8 @@ public class Query<T extends Table> {
 			Objects.equals(startsWith, other.startsWith) &&
 			Objects.equals(type, other.type) &&
 			Objects.equals(threadCount, other.threadCount) &&
-			Objects.equals(threadIndex, other.threadIndex));
+			Objects.equals(threadIndex, other.threadIndex)) &&
+            Objects.equals(scanIndexForward, other.scanIndexForward);
 	}
 
 	static boolean isPowerOfTwo(int n) {
