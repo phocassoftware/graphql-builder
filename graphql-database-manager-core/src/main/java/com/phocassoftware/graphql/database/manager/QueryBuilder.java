@@ -21,6 +21,7 @@ public class QueryBuilder<V extends Table> {
 	private Integer limit;
 	private Integer threadIndex;
 	private Integer threadCount;
+	private Boolean scanIndexForward;
 
 	private QueryBuilder(Class<V> type) {
 		this.type = type;
@@ -51,13 +52,18 @@ public class QueryBuilder<V extends Table> {
 		return this;
 	}
 
+	public QueryBuilder<V> scanIndexForward(Boolean scanIndexForward) {
+		this.scanIndexForward = scanIndexForward;
+		return this;
+	}
+
 	public QueryBuilder<V> applyMutation(Consumer<QueryBuilder<V>> mutator) {
 		mutator.accept((QueryBuilder<V>) this);
 		return (QueryBuilder<V>) this;
 	}
 
 	public Query<V> build() {
-		return new Query<V>(type, startsWith, after, limit, threadCount, threadIndex);
+		return new Query<V>(type, startsWith, after, limit, threadCount, threadIndex, scanIndexForward);
 	}
 
 	public static <V extends Table> QueryBuilder<V> create(Class<V> type) {
