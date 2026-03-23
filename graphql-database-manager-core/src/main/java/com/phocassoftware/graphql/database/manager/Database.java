@@ -73,7 +73,7 @@ public class Database {
 		queries = new TableDataLoader<>(
 			DataLoaderFactory
 				.newDataLoader(
-					keys -> merge(keys.stream().map(driver::query)),
+					keys -> merge(keys.stream().map(d -> driver.query(d))),
 					DataLoaderOptions.newOptions().setBatchingEnabled(false).build()
 				),
 			this::handleFuture
@@ -82,13 +82,34 @@ public class Database {
 		queryHistories = new TableDataLoader<>(
 			DataLoaderFactory
 				.newDataLoader(
-					keys -> merge(keys.stream().map(driver::queryHistory)),
+					keys -> merge(keys.stream().map(d -> driver.queryHistory(d))),
 					DataLoaderOptions.newOptions().setBatchingEnabled(false).build()
 				),
 			this::handleFuture
 		); // will auto call global
 
 		put = new DataWriter(driver::bulkPut, this::handleFuture);
+	}
+
+	private Database(
+		String organisationId,
+		DatabaseDriver driver,
+		TableDataLoader<DatabaseKey<Table>> items,
+		TableDataLoader<DatabaseQueryKey<Table>> queries,
+		TableDataLoader<DatabaseQueryHistoryKey<Table>> queryHistories,
+		DataWriter put,
+		Function<Table, CompletableFuture<Boolean>> putAllow,
+		AtomicInteger submitted
+	) {
+		super();
+		this.organisationId = organisationId;
+		this.driver = driver;
+		this.items = items;
+		this.queries = queries;
+		this.queryHistories = queryHistories;
+		this.put = put;
+		this.putAllow = putAllow;
+		this.submitted = submitted;
 	}
 
 	public <T extends Table> CompletableFuture<List<T>> query(Class<T> type, Function<QueryBuilder<T>, QueryBuilder<T>> func) {
@@ -448,5 +469,18 @@ public class Database {
 			}
 			run();
 		});
+	}
+
+	public Database withOrganisationId(String organisationId) {
+		return new Database(
+			organisationId,
+			this.driver,
+			this.items,
+			this.queries,
+			this.queryHistories,
+			this.put,
+			this.putAllow,
+			this.submitted
+		);
 	}
 }

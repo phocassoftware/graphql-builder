@@ -12,6 +12,7 @@
 
 package com.phocassoftware.graphql.database.manager;
 
+import com.phocassoftware.graphql.builder.annotations.Context;
 import com.phocassoftware.graphql.database.manager.util.BackupItem;
 import com.phocassoftware.graphql.database.manager.util.HistoryBackupItem;
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
+@Context
 public class VirtualDatabase {
 
 	private final Database database;
@@ -137,6 +139,10 @@ public class VirtualDatabase {
 
 	public void setOrganisationId(String organisationId) {
 		database.setOrganisationId(organisationId);
+	}
+
+	public VirtualDatabase withOrganisationId(String organisationId) {
+		return new VirtualDatabase(database.withOrganisationId(organisationId));
 	}
 
 	public List<BackupItem> takeBackup(String organisationId) {
