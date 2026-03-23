@@ -73,7 +73,7 @@ public class Database {
 		queries = new TableDataLoader<>(
 			DataLoaderFactory
 				.newDataLoader(
-					keys -> merge(keys.stream().map(d -> driver.query(d))),
+					keys -> merge(keys.stream().map(driver::query)),
 					DataLoaderOptions.newOptions().setBatchingEnabled(false).build()
 				),
 			this::handleFuture
@@ -82,7 +82,7 @@ public class Database {
 		queryHistories = new TableDataLoader<>(
 			DataLoaderFactory
 				.newDataLoader(
-					keys -> merge(keys.stream().map(d -> driver.queryHistory(d))),
+					keys -> merge(keys.stream().map(driver::queryHistory)),
 					DataLoaderOptions.newOptions().setBatchingEnabled(false).build()
 				),
 			this::handleFuture
