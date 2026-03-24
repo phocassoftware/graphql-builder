@@ -11,8 +11,8 @@
  */
 package com.phocassoftware.graphql.database.manager.test;
 
-import tools.jackson.annotation.JsonAutoDetect.Visibility;
-import tools.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;

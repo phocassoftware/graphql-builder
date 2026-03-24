@@ -12,9 +12,9 @@
 
 package com.phocassoftware.graphql.database.manager.test;
 
-import tools.jackson.annotation.JsonSubTypes;
-import tools.jackson.annotation.JsonSubTypes.Type;
-import tools.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonSubTypes.Type;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.phocassoftware.graphql.database.manager.Database;
 import com.phocassoftware.graphql.database.manager.Table;
 import com.phocassoftware.graphql.database.manager.annotations.TableName;

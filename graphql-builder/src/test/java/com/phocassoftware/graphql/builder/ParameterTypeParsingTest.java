@@ -13,8 +13,8 @@ package com.phocassoftware.graphql.builder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import tools.jackson.annotation.JsonAutoDetect.Visibility;
-import tools.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
 import tools.jackson.core.JsonProcessingException;
 import tools.jackson.databind.JsonMappingException;
 import tools.jackson.databind.ObjectMapper;
