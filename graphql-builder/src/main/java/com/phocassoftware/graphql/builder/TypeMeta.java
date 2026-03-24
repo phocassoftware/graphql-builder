@@ -26,7 +26,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 import org.reactivestreams.Publisher;
 
 public class TypeMeta {
@@ -163,7 +163,7 @@ public class TypeMeta {
 	}
 
 	private void process(Class<?> type, Type genericType, AnnotatedElement element) {
-		if (element != null && (element.isAnnotationPresent(Nullable.class) || element.isAnnotationPresent(jakarta.annotation.Nullable.class))) {
+		if (element != null && element.isAnnotationPresent(Nullable.class)) {
 			if (!flags.contains(Flag.OPTIONAL)) {
 				flags.add(Flag.OPTIONAL);
 			}

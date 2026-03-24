@@ -19,17 +19,16 @@ import graphql.schema.GraphQLSchema;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import io.github.classgraph.ClassGraph;
+import io.github.classgraph.ScanResult;
+import jakarta.validation.Constraint;
+import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import jakarta.validation.Constraint;
-import org.reflections.Reflections;
-import org.reflections.scanners.Scanners;
-
-import static org.reflections.scanners.Scanners.SubTypes;
 
 public class SchemaBuilder {
 
@@ -141,59 +140,93 @@ public class SchemaBuilder {
 			try {
 				this.scalar(ExtendedScalars.GraphQLLong);
 
-				Reflections reflections = new Reflections(classpaths, SubTypes, Scanners.MethodsAnnotated, Scanners.TypesAnnotated);
-				Set<Class<? extends Authorizer>> authorizers = reflections.getSubTypesOf(Authorizer.class);
-				// want to make everything split by package
-				AuthorizerSchema authorizer = AuthorizerSchema.build(dataFetcherRunner, new HashSet<>(classpaths), authorizers);
+				try (ScanResult scanResult = new ClassGraph()
+					.acceptPackages(classpaths.toArray(String[]::new))
+					.enableClassInfo()
+					.enableMethodInfo()
+					.enableAnnotationInfo()
+					.scan()) {
 
-				Set<Class<? extends SchemaConfiguration>> schemaConfiguration = reflections.getSubTypesOf(SchemaConfiguration.class);
+					Set<Class<? extends Authorizer>> authorizers = new HashSet<>(
+						scanResult.getClassesImplementing(Authorizer.class).loadClasses(Authorizer.class)
+					);
+					// want to make everything split by package
+					AuthorizerSchema authorizer = AuthorizerSchema.build(dataFetcherRunner, new HashSet<>(classpaths), authorizers);
 
-				DirectivesSchema directivesSchema = getDirectivesSchema(reflections);
+					Set<Class<? extends SchemaConfiguration>> schemaConfiguration = new HashSet<>(
+						scanResult.getClassesImplementing(SchemaConfiguration.class).loadClasses(SchemaConfiguration.class)
+					);
 
-				Set<Class<?>> types = reflections.getTypesAnnotatedWith(Entity.class);
+					DirectivesSchema directivesSchema = getDirectivesSchema(scanResult);
 
-				var mutations = reflections.getMethodsAnnotatedWith(Mutation.class);
-				var subscriptions = reflections.getMethodsAnnotatedWith(Subscription.class);
-				var queries = reflections.getMethodsAnnotatedWith(Query.class);
+					var entityClasses = scanResult.getClassesWithAnnotation(Entity.class).loadClasses();
+					entityClasses.removeIf(t -> t.getDeclaredAnnotation(Entity.class) == null);
+					entityClasses.removeIf(Class::isAnonymousClass);
+					// Sort: BOTH/INPUT types first so they claim entity registry slots before TYPE-only
+					// types when multiple classes share the same simple name across packages
+					entityClasses.sort((a, b) -> {
+						SchemaOption aVal = a.getDeclaredAnnotation(Entity.class).value();
+						SchemaOption bVal = b.getDeclaredAnnotation(Entity.class).value();
+						int aScore = (aVal == SchemaOption.TYPE) ? 1 : 0;
+						int bScore = (bVal == SchemaOption.TYPE) ? 1 : 0;
+						if (aScore != bScore) return aScore - bScore;
+						return a.getCanonicalName().compareTo(b.getCanonicalName());
+					});
+					Set<Class<?>> types = new LinkedHashSet<>(entityClasses);
 
-				var endPoints = new HashSet<>(mutations);
-				endPoints.addAll(subscriptions);
-				endPoints.addAll(queries);
+					var mutations = getMethodsAnnotatedWith(scanResult, Mutation.class);
+					var subscriptions = getMethodsAnnotatedWith(scanResult, Subscription.class);
+					var queries = getMethodsAnnotatedWith(scanResult, Query.class);
 
-				types.removeIf(t -> t.getDeclaredAnnotation(Entity.class) == null);
-				types.removeIf(Class::isAnonymousClass);
+					var endPoints = new HashSet<>(mutations);
+					endPoints.addAll(subscriptions);
+					endPoints.addAll(queries);
 
-				return new SchemaBuilder(dataFetcherRunner, scalars, directivesSchema, authorizer)
-					.processTypes(types)
-					.process(endPoints, shouldValidate)
-					.build(schemaConfiguration);
+					return new SchemaBuilder(dataFetcherRunner, scalars, directivesSchema, authorizer)
+						.processTypes(types)
+						.process(endPoints, shouldValidate)
+						.build(schemaConfiguration);
+				}
 			} catch (ReflectiveOperationException e) {
 				throw new RuntimeException(e);
 			}
 		}
 
-		private static DirectivesSchema getDirectivesSchema(Reflections reflections) throws ReflectiveOperationException {
-			Set<Class<?>> directivesTypes = reflections.getTypesAnnotatedWith(Directive.class);
-			directivesTypes.addAll(reflections.getTypesAnnotatedWith(DataFetcherWrapper.class));
+		private static Set<Method> getMethodsAnnotatedWith(ScanResult scanResult, Class<? extends Annotation> annotation) {
+			Set<Method> methods = new HashSet<>();
+			for (var classInfo : scanResult.getClassesWithMethodAnnotation(annotation)) {
+				for (Method method : classInfo.loadClass().getMethods()) {
+					if (method.isAnnotationPresent(annotation)) {
+						methods.add(method);
+					}
+				}
+			}
+			return methods;
+		}
 
-			List<RestrictTypeFactory<?>> globalRestricts = getGlobalRestricts(reflections);
+		private static DirectivesSchema getDirectivesSchema(ScanResult scanResult) throws ReflectiveOperationException {
+			Set<Class<?>> directivesTypes = new HashSet<>(scanResult.getClassesWithAnnotation(Directive.class).loadClasses());
+			directivesTypes.addAll(scanResult.getClassesWithAnnotation(DataFetcherWrapper.class).loadClasses());
+
+			List<RestrictTypeFactory<?>> globalRestricts = getGlobalRestricts(scanResult);
 
 			return DirectivesSchema.build(globalRestricts, directivesTypes, getJakartaAnnotations());
 		}
 
 		private static Set<Class<?>> getJakartaAnnotations() {
-			Reflections reflections = new Reflections("jakarta.validation.constraints", SubTypes.filterResultsBy(c -> true));
-			return reflections
-				.getSubTypesOf(Object.class)
-				.stream()
-				.filter(a -> a.isAnnotationPresent(Constraint.class))
-				.collect(Collectors.toSet());
+			try (ScanResult scanResult = new ClassGraph()
+				.acceptPackages("jakarta.validation.constraints")
+				.enableClassInfo()
+				.enableAnnotationInfo()
+				.scan()) {
+				return new HashSet<>(scanResult.getClassesWithAnnotation(Constraint.class).loadClasses());
+			}
 		}
 
-		private static List<RestrictTypeFactory<?>> getGlobalRestricts(Reflections reflections)
+		private static List<RestrictTypeFactory<?>> getGlobalRestricts(ScanResult scanResult)
 			throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
-			Set<Class<?>> restrict = reflections.getTypesAnnotatedWith(Restrict.class);
-			Set<Class<?>> restricts = reflections.getTypesAnnotatedWith(Restricts.class);
+			Set<Class<?>> restrict = new HashSet<>(scanResult.getClassesWithAnnotation(Restrict.class).loadClasses());
+			Set<Class<?>> restricts = new HashSet<>(scanResult.getClassesWithAnnotation(Restricts.class).loadClasses());
 			List<RestrictTypeFactory<?>> globalRestricts = new ArrayList<>();
 
 			for (var r : restrict) {
