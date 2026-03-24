@@ -15,12 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
@@ -32,28 +28,27 @@ import org.junit.jupiter.api.Test;
 
 public class ParameterTypeParsingTest {
 
-	public static final ObjectMapper MAPPER = new ObjectMapper()
-		.registerModule(new ParameterNamesModule())
-		.registerModule(new Jdk8Module())
-		.registerModule(new JavaTimeModule())
-		.setVisibility(PropertyAccessor.FIELD, Visibility.ANY);
+	public static final ObjectMapper MAPPER = JsonMapper
+		.builder()
+		.changeDefaultVisibility(vc -> vc.withVisibility(PropertyAccessor.FIELD, Visibility.ANY))
+		.build();
 
 	// TODO:add failure cases
 	@Test
-	public void testRequiredType() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testRequiredType() {
 		Map<String, Map<String, String>> response = execute("query test($type: InputTestInput!){requiredType(type: $type){value}} ", "{\"value\": \"There\"}")
 			.getData();
 		assertEquals("There", response.get("requiredType").get("value"));
 	}
 
 	@Test
-	public void testEnum() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testEnum() {
 		Map<String, Map<String, String>> response = execute("query enumTest($type: AnimalType!){enumTest(type: $type)} ", "\"CAT\"").getData();
 		assertEquals("CAT", response.get("enumTest"));
 	}
 
 	@Test
-	public void testDescription() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testDescription() {
 		Map<String, Map<String, Object>> response = execute(
 			"{" +
 				"  __type(name: \"AnimalType\") {" +
@@ -82,32 +77,32 @@ public class ParameterTypeParsingTest {
 	}
 
 	@Test
-	public void testOptionalTypePresent() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testOptionalTypePresent() {
 		Map<String, Map<String, String>> response = execute("query test($type: InputTestInput){optionalType(type: $type){value}} ", "{\"value\": \"There\"}")
 			.getData();
 		assertEquals("There", response.get("optionalType").get("value"));
 	}
 
 	@Test
-	public void testOptionalTypeNull() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testOptionalTypeNull() {
 		Map<String, Map<String, String>> response = execute("query test($type: InputTestInput){optionalType(type: $type){value}} ", null).getData();
 		assertEquals(null, response.get("optionalType"));
 	}
 
 	@Test
-	public void testOptionalTypeMissing() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testOptionalTypeMissing() {
 		Map<String, Map<String, String>> response = execute("query test{optionalType{value}} ", null).getData();
 		assertEquals(null, response.get("optionalType"));
 	}
 
 	@Test
-	public void testRequiredListTypeEmpty() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testRequiredListTypeEmpty() {
 		Map<String, List<Map<String, String>>> response = execute("query {requiredListType(type: []){value}} ", null).getData();
 		assertEquals(Collections.emptyList(), response.get("requiredListType"));
 	}
 
 	@Test
-	public void testRequiredListType() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testRequiredListType() {
 		Map<String, List<Map<String, String>>> response = execute(
 			"query test($type: [InputTestInput!]!){requiredListType(type: $type){value}} ",
 			"[{\"value\": \"There\"}]"
@@ -117,13 +112,13 @@ public class ParameterTypeParsingTest {
 	}
 
 	@Test
-	public void testOptionalListTypeEmpty() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testOptionalListTypeEmpty() {
 		Map<String, List<Map<String, String>>> response = execute("query {optionalListType(type: []){value}} ", null).getData();
 		assertEquals(Collections.emptyList(), response.get("optionalListType"));
 	}
 
 	@Test
-	public void testOptionalListType() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testOptionalListType() {
 		Map<String, List<Map<String, String>>> response = execute(
 			"query test($type: [InputTestInput!]){optionalListType(type: $type){value}} ",
 			"[{\"value\": \"There\"}]"
@@ -133,13 +128,13 @@ public class ParameterTypeParsingTest {
 	}
 
 	@Test
-	public void testOptionalListTypeNull() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testOptionalListTypeNull() {
 		Map<String, List<Map<String, String>>> response = execute("query {optionalListType{value}} ", null).getData();
 		assertEquals(null, response.get("optionalListType"));
 	}
 
 	@Test
-	public void testRequiredListOptionalType() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testRequiredListOptionalType() {
 		Map<String, List<Map<String, String>>> response = execute(
 			"query test($type: [InputTestInput]!){requiredListOptionalType(type: $type){value}} ",
 			"[null, {\"value\": \"There\"}]"
@@ -150,7 +145,7 @@ public class ParameterTypeParsingTest {
 	}
 
 	@Test
-	public void testOptionalListOptionalType() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testOptionalListOptionalType() {
 		Map<String, List<Map<String, String>>> response = execute(
 			"query test($type: [InputTestInput]){optionalListOptionalType(type: $type){value}} ",
 			"[null, {\"value\": \"There\"}]"
@@ -161,12 +156,12 @@ public class ParameterTypeParsingTest {
 	}
 
 	@Test
-	public void testOptionalListOptionalTypeNull() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testOptionalListOptionalTypeNull() {
 		Map<String, List<Map<String, String>>> response = execute("query {optionalListOptionalType{value}} ", null).getData();
 		assertEquals(null, response.get("optionalListOptionalType"));
 	}
 
-	private ExecutionResult execute(String query, String type) throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	private ExecutionResult execute(String query, String type) {
 		Object obj = null;
 		if (type != null) {
 			obj = MAPPER.readValue(type, Object.class);

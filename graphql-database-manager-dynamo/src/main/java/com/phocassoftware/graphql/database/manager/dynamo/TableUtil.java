@@ -12,30 +12,25 @@
 
 package com.phocassoftware.graphql.database.manager.dynamo;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.BinaryNode;
-import com.fasterxml.jackson.databind.node.BooleanNode;
-import com.fasterxml.jackson.databind.node.DoubleNode;
-import com.fasterxml.jackson.databind.node.LongNode;
-import com.fasterxml.jackson.databind.node.NullNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.BinaryNode;
+import tools.jackson.databind.node.BooleanNode;
+import tools.jackson.databind.node.DoubleNode;
+import tools.jackson.databind.node.LongNode;
+import tools.jackson.databind.node.NullNode;
+import tools.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.node.POJONode;
 import com.phocassoftware.graphql.database.manager.Table;
 import com.phocassoftware.graphql.database.manager.annotations.GlobalIndex;
 import com.phocassoftware.graphql.database.manager.annotations.SecondaryIndex;
 import com.phocassoftware.graphql.database.manager.util.BackupItem;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Spliterators;
 import java.util.concurrent.CompletableFuture;
@@ -88,9 +83,7 @@ public class TableUtil {
 		Map<String, AttributeValue> entries = new HashMap<>();
 		ObjectNode tree = mapper.valueToTree(entity);
 
-		Iterator<Entry<String, JsonNode>> fields = tree.fields();
-		fields.forEachRemaining(entry -> {
-			Entry<String, JsonNode> field = entry;
+		tree.properties().forEach(field -> {
 			AttributeValue attribute = toAttribute(field.getValue());
 			if (attribute != null) {
 				entries.put(field.getKey(), attribute);
@@ -123,11 +116,8 @@ public class TableUtil {
 
 		ObjectNode tree = mapper.valueToTree(entityItem);
 
-		Iterator<Entry<String, JsonNode>> fields = tree.fields();
-		fields.forEachRemaining(entry -> {
-			Entry<String, JsonNode> field = entry;
-			AttributeValue attribute;
-			attribute = toAttribute(field.getValue());
+		tree.properties().forEach(field -> {
+			AttributeValue attribute = toAttribute(field.getValue());
 			if (attribute != null) {
 				entries.put(field.getKey(), attribute);
 			}
@@ -141,11 +131,7 @@ public class TableUtil {
 			case NUMBER:
 				return AttributeValue.builder().n(value.asText()).build();
 			case BINARY:
-				try {
-					return AttributeValue.builder().b(SdkBytes.fromByteArray(value.binaryValue())).build();
-				} catch (IOException e) {
-					throw new UncheckedIOException(e);
-				}
+				return AttributeValue.builder().b(SdkBytes.fromByteArray(value.binaryValue())).build();
 			case BOOLEAN:
 				return AttributeValue.builder().bool(value.asBoolean()).build();
 			case STRING:
@@ -159,14 +145,23 @@ public class TableUtil {
 			case OBJECT:
 				ObjectNode tree = (ObjectNode) value;
 				Map<String, AttributeValue> entries = new HashMap<>();
-				Iterator<Entry<String, JsonNode>> fields = tree.fields();
-				fields.forEachRemaining(entry -> {
-					Entry<String, JsonNode> field = entry;
+				tree.properties().forEach(field -> {
 					entries.put(field.getKey(), toAttribute(field.getValue()));
 				});
 				return AttributeValue.builder().m(entries).build();
 			case NULL:
 				return AttributeValue.builder().nul(true).build();
+			case POJO:
+				// In Jackson 3.x, valueToTree wraps certain types as POJONodes rather than
+				// serializing them directly (e.g. byte[] and JsonNode instances)
+				Object pojoVal = ((POJONode) value).getPojo();
+				if (pojoVal instanceof JsonNode) {
+					return toAttribute((JsonNode) pojoVal);
+				}
+				if (pojoVal instanceof byte[]) {
+					return AttributeValue.builder().b(SdkBytes.fromByteArray((byte[]) pojoVal)).build();
+				}
+				throw new RuntimeException("Cannot convert POJO to attribute: " + pojoVal.getClass());
 			default:
 				throw new RuntimeException("unknown type " + value.getNodeType());
 		}
@@ -189,23 +184,15 @@ public class TableUtil {
 		if (attributeValue == null) {
 			return null;
 		}
-		try {
-			return mapper.treeToValue(toJson(mapper, attributeValue), type);
-		} catch (JsonProcessingException e) {
-			throw new UncheckedIOException(e);
-		}
+		return mapper.treeToValue(toJson(mapper, attributeValue), type);
 	}
 
 	public static <T> T convertTo(ObjectMapper mapper, Map<String, AttributeValue> item, Class<T> type) {
-		try {
-			ObjectNode objNode = mapper.createObjectNode();
-			item.forEach((key, v) -> {
-				objNode.set(key, toJson(mapper, v));
-			});
-			return mapper.treeToValue(objNode, type);
-		} catch (JsonProcessingException e) {
-			throw new UncheckedIOException(e);
-		}
+		ObjectNode objNode = mapper.createObjectNode();
+		item.forEach((key, v) -> {
+			objNode.set(key, toJson(mapper, v));
+		});
+		return mapper.treeToValue(objNode, type);
 	}
 
 	public static JsonNode toJson(ObjectMapper mapper, AttributeValue value) {
@@ -226,7 +213,7 @@ public class TableUtil {
 			return DoubleNode.valueOf(v);
 		}
 		if (value.s() != null) {
-			return TextNode.valueOf(value.s());
+			return mapper.getNodeFactory().textNode(value.s());
 		}
 
 		Object defArray = DefaultSdkAutoConstructList.getInstance();
@@ -249,14 +236,14 @@ public class TableUtil {
 		if (value.ns() != defArray) {
 			ArrayNode arrayNode = mapper.createArrayNode();
 			for (String s : value.ns()) {
-				arrayNode.add(TextNode.valueOf(s));
+				arrayNode.add(mapper.getNodeFactory().textNode(s));
 			}
 			return arrayNode;
 		}
 		if (value.ss() != defArray) {
 			ArrayNode arrayNode = mapper.createArrayNode();
 			for (String s : value.ss()) {
-				arrayNode.add(TextNode.valueOf(s));
+				arrayNode.add(mapper.getNodeFactory().textNode(s));
 			}
 			return arrayNode;
 		}

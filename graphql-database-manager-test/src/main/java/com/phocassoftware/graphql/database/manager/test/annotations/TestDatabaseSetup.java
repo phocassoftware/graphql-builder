@@ -13,7 +13,7 @@ package com.phocassoftware.graphql.database.manager.test.annotations;
 
 import java.util.List;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 
 public interface TestDatabaseSetup {
 

@@ -14,7 +14,7 @@ package com.phocassoftware.graphql.database.manager.dynamo;
 
 import static com.phocassoftware.graphql.database.manager.util.TableCoreUtil.table;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.DatabaseDriver;
 import com.phocassoftware.graphql.database.manager.DatabaseKey;
 import com.phocassoftware.graphql.database.manager.DatabaseQueryHistoryKey;

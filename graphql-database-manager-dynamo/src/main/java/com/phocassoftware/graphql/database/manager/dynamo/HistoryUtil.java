@@ -11,7 +11,7 @@
  */
 package com.phocassoftware.graphql.database.manager.dynamo;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.util.HistoryBackupItem;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

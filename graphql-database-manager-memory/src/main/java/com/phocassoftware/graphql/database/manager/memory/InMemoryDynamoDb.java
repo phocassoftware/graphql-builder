@@ -23,8 +23,8 @@
 //
 //package com.phocassoftware.graphql.database.manager.memory;
 //
-//import com.fasterxml.jackson.databind.ObjectMapper;
-//import com.fasterxml.jackson.databind.node.*;
+//import tools.jackson.databind.ObjectMapper;
+//import tools.jackson.databind.node.*;
 //import com.phocassoftware.graphql.database.manager.*;
 //import com.phocassoftware.graphql.database.manager.dynamo.Flatterner;
 //import com.google.common.collect.Multimap;

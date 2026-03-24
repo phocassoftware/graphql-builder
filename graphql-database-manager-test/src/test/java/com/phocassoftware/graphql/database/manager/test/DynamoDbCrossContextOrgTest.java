@@ -18,8 +18,6 @@ import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Assertions;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.phocassoftware.graphql.builder.SchemaBuilder;
 import com.phocassoftware.graphql.database.manager.VirtualDatabase;
 import com.phocassoftware.graphql.database.manager.test.crossorg.*;
@@ -65,7 +63,7 @@ public class DynamoDbCrossContextOrgTest {
 	}
 
 	@TestDatabase
-	void testViaGraphql(VirtualDatabase db) throws JsonMappingException, JsonProcessingException {
+	void testViaGraphql(VirtualDatabase db) {
 		var global = db.withOrganisationId("global3");
 		var globalEntry = global.put(new GlobalEntry("topGraph"));
 

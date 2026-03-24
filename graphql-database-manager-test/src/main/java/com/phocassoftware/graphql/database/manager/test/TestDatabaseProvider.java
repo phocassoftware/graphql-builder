@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.extension.*;
 import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.Database;
 import com.phocassoftware.graphql.database.manager.VirtualDatabase;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;

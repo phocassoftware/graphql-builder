@@ -11,8 +11,6 @@
  */
 package com.phocassoftware.graphql.builder.restrictions;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.phocassoftware.graphql.builder.SchemaBuilder;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
@@ -51,7 +49,7 @@ public class RestrictionTypesTest {
 		""";
 
 	@Test
-	public void singleEntityQuery() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void singleEntityQuery() {
 		Map<String, Object> variables = new HashMap<>();
 		variables.put("allowed", true);
 		Map<String, Map<String, Object>> response = execute(singleQueryGql, variables).getData();
@@ -60,7 +58,7 @@ public class RestrictionTypesTest {
 	}
 
 	@Test
-	public void singleOptionalEntityQuery() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void singleOptionalEntityQuery() {
 		Map<String, Object> variables = new HashMap<>();
 
 		// Allowed
@@ -75,7 +73,7 @@ public class RestrictionTypesTest {
 	}
 
 	@Test
-	public void listEntityQuery() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void listEntityQuery() {
 		Map<String, Object> variables = new HashMap<>();
 
 		variables.put("allowed", Arrays.asList(true, true, true));
@@ -92,7 +90,7 @@ public class RestrictionTypesTest {
 	}
 
 	@Test
-	public void listEntityInheritanceQuery() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void listEntityInheritanceQuery() {
 		Map<String, Object> variables = new HashMap<>();
 
 		variables.put("allowed", Arrays.asList(true, true, true));
@@ -109,7 +107,7 @@ public class RestrictionTypesTest {
 	}
 
 	@Test
-	public void optionalListEntityQuery() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void optionalListEntityQuery() {
 		Map<String, Object> variables = new HashMap<>();
 
 		// No list passed through
@@ -129,7 +127,7 @@ public class RestrictionTypesTest {
 		Assertions.assertEquals(0, responseNoneAllowed.get("listOptional").size());
 	}
 
-	private static ExecutionResult execute(String query, Map<String, Object> variables) throws JsonMappingException, JsonProcessingException {
+	private static ExecutionResult execute(String query, Map<String, Object> variables) {
 		var input = ExecutionInput.newExecutionInput().query(query).variables(variables).build();
 		ExecutionResult result = schema.execute(input);
 		if (!result.getErrors().isEmpty()) {
