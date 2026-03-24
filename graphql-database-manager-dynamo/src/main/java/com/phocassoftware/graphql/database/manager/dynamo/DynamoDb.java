@@ -63,7 +63,7 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.reflections.Reflections;
+import io.github.classgraph.ClassGraph;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeAction;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
@@ -152,7 +152,10 @@ public class DynamoDb extends DatabaseDriver {
 		this.parallelHashIndex = parallelHashIndex;
 
 		if (classPath != null) {
-			var tableObjects = new Reflections(classPath).getSubTypesOf(Table.class);
+			java.util.List<Class<Table>> tableObjects;
+			try (var scanResult = new ClassGraph().acceptPackages(classPath).enableClassInfo().scan()) {
+				tableObjects = scanResult.getSubclasses(Table.class).loadClasses(Table.class);
+			}
 
 			this.hashKeyExpander = new HashMap<>();
 			this.classes = new HashMap<>();
@@ -987,8 +990,11 @@ public class DynamoDb extends DatabaseDriver {
 			throw new RuntimeException("classPath is required to obtain the tables' name to query the history table");
 		}
 
-		// Using reflections to loop through tables and get the tables' name
-		Set<Class<? extends Table>> tableObjects = new Reflections(classPath).getSubTypesOf(Table.class);
+		// Using classgraph to loop through tables and get the tables' name
+		java.util.List<Class<Table>> tableObjects;
+		try (var scanResult = new ClassGraph().acceptPackages(classPath).enableClassInfo().scan()) {
+			tableObjects = scanResult.getSubclasses(Table.class).loadClasses(Table.class);
+		}
 		List<HistoryBackupItem> toReturn = Collections.synchronizedList(new ArrayList<HistoryBackupItem>());
 
 		Set<String> orgIdTypes = tableObjects.stream().map(obj -> organisationId + ":" + TableCoreUtil.table(obj)).collect(Collectors.toSet());
