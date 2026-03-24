@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
@@ -27,8 +28,9 @@ import org.junit.jupiter.api.Test;
 
 public class ParameterTypeParsingTest {
 
-	public static final ObjectMapper MAPPER = new ObjectMapper()
-		.setVisibility(PropertyAccessor.FIELD, Visibility.ANY);
+	public static final ObjectMapper MAPPER = JsonMapper.builder()
+		.changeDefaultVisibility(vc -> vc.withVisibility(PropertyAccessor.FIELD, Visibility.ANY))
+		.build();
 
 	// TODO:add failure cases
 	@Test

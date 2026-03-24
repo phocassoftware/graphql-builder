@@ -15,19 +15,16 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 import java.util.function.Supplier;
 
 public class ObjectMapperCreator implements Supplier<ObjectMapper> {
 
 	@Override
 	public ObjectMapper get() {
-		return new ObjectMapper()
+		return JsonMapper.builder()
 			.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-			.disable(DeserializationFeature.READ_DATE_TIMESTAMPS_AS_NANOSECONDS)
-			.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-			.disable(SerializationFeature.WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS)
-			.disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS)
-			.setVisibility(PropertyAccessor.FIELD, Visibility.ANY);
+			.changeDefaultVisibility(vc -> vc.withVisibility(PropertyAccessor.FIELD, Visibility.ANY))
+			.build();
 	}
 }
