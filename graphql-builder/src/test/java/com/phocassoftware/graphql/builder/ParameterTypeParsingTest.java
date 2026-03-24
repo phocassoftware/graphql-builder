@@ -28,7 +28,8 @@ import org.junit.jupiter.api.Test;
 
 public class ParameterTypeParsingTest {
 
-	public static final ObjectMapper MAPPER = JsonMapper.builder()
+	public static final ObjectMapper MAPPER = JsonMapper
+		.builder()
 		.changeDefaultVisibility(vc -> vc.withVisibility(PropertyAccessor.FIELD, Visibility.ANY))
 		.build();
 

@@ -22,7 +22,8 @@ public class ObjectMapperCreator implements Supplier<ObjectMapper> {
 
 	@Override
 	public ObjectMapper get() {
-		return JsonMapper.builder()
+		return JsonMapper
+			.builder()
 			.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
 			.changeDefaultVisibility(vc -> vc.withVisibility(PropertyAccessor.FIELD, Visibility.ANY))
 			.build();
