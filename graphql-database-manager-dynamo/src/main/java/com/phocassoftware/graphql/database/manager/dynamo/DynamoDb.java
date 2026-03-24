@@ -1708,7 +1708,7 @@ public class DynamoDb extends DatabaseDriver {
 							entity,
 							replacement -> put(orgIdFinal, replacement, true, false).join(),
 							delete -> {
-								delete(orgIdFinal, delete);
+								delete(orgIdFinal, delete).join();
 							}
 						)
 					);
