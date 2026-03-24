@@ -18,7 +18,7 @@ import com.phocassoftware.graphql.builder.annotations.Union;
 
 import java.util.List;
 import java.util.Optional;
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 
 public class Queries {
 
