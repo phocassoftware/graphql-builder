@@ -12,7 +12,7 @@
 
 package com.phocassoftware.graphql.database.manager;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import tools.jackson.annotation.JsonIgnore;
 import com.phocassoftware.graphql.builder.annotations.GraphQLIgnore;
 import com.phocassoftware.graphql.builder.annotations.Id;
 import java.time.Instant;

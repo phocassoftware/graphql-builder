@@ -11,11 +11,11 @@
  */
 package com.phocassoftware.graphql.builder.record;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import tools.jackson.annotation.JsonProperty;
 
 import java.util.Optional;
 
-import com.fasterxml.jackson.annotation.JsonSubTypes;
+import tools.jackson.annotation.JsonSubTypes;
 
 @JsonSubTypes({
 	@JsonSubTypes.Type(value = CatRecord.class, name = "Cat"),

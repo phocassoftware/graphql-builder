@@ -11,8 +11,8 @@
  */
 package com.phocassoftware.graphql.builder.restrictions;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
+import tools.jackson.core.JsonProcessingException;
+import tools.jackson.databind.JsonMappingException;
 import com.phocassoftware.graphql.builder.SchemaBuilder;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;

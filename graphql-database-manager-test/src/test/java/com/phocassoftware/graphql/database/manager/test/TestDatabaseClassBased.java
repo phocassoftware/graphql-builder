@@ -14,7 +14,7 @@ package com.phocassoftware.graphql.database.manager.test;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.test.annotations.TestDatabaseSetup;
 
 @Retention(RetentionPolicy.RUNTIME)

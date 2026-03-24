@@ -11,7 +11,7 @@
  */
 package com.phocassoftware.graphql.database.manager.memory;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.phocassoftware.graphql.database.manager.Table;
 import com.google.common.collect.HashMultimap;
 

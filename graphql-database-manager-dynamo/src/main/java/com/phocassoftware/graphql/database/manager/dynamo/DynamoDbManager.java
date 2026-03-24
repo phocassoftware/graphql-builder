@@ -12,7 +12,7 @@
 
 package com.phocassoftware.graphql.database.manager.dynamo;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.DatabaseDriver;
 import com.phocassoftware.graphql.database.manager.DatabaseManager;
 import com.google.common.base.Preconditions;

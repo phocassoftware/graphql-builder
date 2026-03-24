@@ -13,14 +13,11 @@ package com.phocassoftware.graphql.builder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
-import com.fasterxml.jackson.annotation.PropertyAccessor;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
+import tools.jackson.annotation.JsonAutoDetect.Visibility;
+import tools.jackson.annotation.PropertyAccessor;
+import tools.jackson.core.JsonProcessingException;
+import tools.jackson.databind.JsonMappingException;
+import tools.jackson.databind.ObjectMapper;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
@@ -33,9 +30,6 @@ import org.junit.jupiter.api.Test;
 public class ParameterTypeParsingTest {
 
 	public static final ObjectMapper MAPPER = new ObjectMapper()
-		.registerModule(new ParameterNamesModule())
-		.registerModule(new Jdk8Module())
-		.registerModule(new JavaTimeModule())
 		.setVisibility(PropertyAccessor.FIELD, Visibility.ANY);
 
 	// TODO:add failure cases
