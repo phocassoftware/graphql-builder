@@ -20,6 +20,12 @@
       "autoApprove": true,
       "automerge": true,
       "groupName": "minor versions"
+    },
+    {
+      "matchPackageNames": [
+        "com.phocassoftware:graphql-builder-parent"
+      ],
+      "enabled": false
     }
   ]
 }
