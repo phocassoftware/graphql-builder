@@ -11,7 +11,6 @@
  */
 package com.phocassoftware.graphql.builder;
 
-import tools.jackson.core.JsonProcessingException;
 import tools.jackson.databind.ObjectMapper;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
@@ -27,7 +26,7 @@ public class RenameTest {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
 	@Test
-	public void testClassRename() throws JsonProcessingException, JSONException {
+	public void testClassRename() throws JSONException {
 		var type = Map.of("nameSet", "foo");
 		var response = execute("""
 				query passthroughClass($type: ClassTypeInput!) {
@@ -49,7 +48,7 @@ public class RenameTest {
 	}
 
 	@Test
-	public void testRecordRename() throws JsonProcessingException, JSONException {
+	public void testRecordRename() throws JSONException {
 		var type = Map.of("name", "foo");
 		var response = execute("""
 				query passthroughRecord($type: RecordTypeInput!) {

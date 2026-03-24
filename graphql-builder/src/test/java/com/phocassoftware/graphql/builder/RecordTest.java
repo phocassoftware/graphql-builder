@@ -15,8 +15,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import tools.jackson.core.JsonProcessingException;
-import tools.jackson.databind.JsonMappingException;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
@@ -65,7 +63,7 @@ public class RecordTest {
 	}
 
 	@Test
-	public void testDescription() throws ReflectiveOperationException, JsonMappingException, JsonProcessingException {
+	public void testDescription() {
 		Map<String, Map<String, Object>> response = execute(
 			"{" +
 				"  __type(name: \"InputTypeInput\") {" +

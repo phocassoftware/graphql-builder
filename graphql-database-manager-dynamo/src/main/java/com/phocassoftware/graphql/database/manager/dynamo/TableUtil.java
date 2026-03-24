@@ -12,7 +12,7 @@
 
 package com.phocassoftware.graphql.database.manager.dynamo;
 
-import tools.jackson.core.JsonProcessingException;
+import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -191,7 +191,7 @@ public class TableUtil {
 		}
 		try {
 			return mapper.treeToValue(toJson(mapper, attributeValue), type);
-		} catch (JsonProcessingException e) {
+		} catch (JacksonException e) {
 			throw new UncheckedIOException(e);
 		}
 	}
@@ -203,7 +203,7 @@ public class TableUtil {
 				objNode.set(key, toJson(mapper, v));
 			});
 			return mapper.treeToValue(objNode, type);
-		} catch (JsonProcessingException e) {
+		} catch (JacksonException e) {
 			throw new UncheckedIOException(e);
 		}
 	}
