@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 //does not test all of records as needs newer version of java. But Classes that look like records
@@ -40,6 +42,29 @@ public class RecordTest {
 		assertEquals(2, results.size());
 		assertEquals(Map.of("name", "Lola", "somethingToDoWithDogs", "LikesBones", "type", "Dog"), results.get(0));
 		assertEquals(Map.of("name", "Mavi", "somethingToDoWithCats", "LikesCheese", "type", "Cat", "greet", "Hello Mavi"), results.get(1));
+	}
+
+	@Test
+	public void testRecordSchemaHidesObjectMethods() {
+		Map<String, Map<String, Object>> response = execute(
+			"{" +
+				"  __type(name: \"CatRecord\") {" +
+				"    fields {" +
+				"      name" +
+				"    }" +
+				"  }" +
+				"}",
+			null
+		).getData();
+
+		var type = response.get("__type");
+		List<Map<String, String>> fields = (List<Map<String, String>>) type.get("fields");
+		var names = fields.stream().map(field -> field.get("name")).collect(Collectors.toSet());
+
+		assertTrue(names.containsAll(Set.of("name", "description", "type", "somethingToDoWithCats", "greet")));
+		assertFalse(names.contains("equals"));
+		assertFalse(names.contains("hashCode"));
+		assertFalse(names.contains("toString"));
 	}
 
 	@Test
