@@ -23,6 +23,7 @@ import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLObjectType.Builder;
 import graphql.schema.GraphQLTypeReference;
 
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -210,6 +211,7 @@ public abstract class TypeBuilder {
 				.stream(type.getMethods())
 				.filter(method -> !method.isSynthetic())
 				.filter(method -> !method.getDeclaringClass().equals(Object.class))
+				.filter(method -> !isObjectContractMethod(method))
 				.filter(method -> !method.isAnnotationPresent(GraphQLIgnore.class))
 				.filter(method -> !Modifier.isStatic(method.getModifiers()))
 				.filter(method -> !method.getReturnType().equals(void.class))
@@ -229,6 +231,15 @@ public abstract class TypeBuilder {
 					graphType.field(f);
 					interfaceBuilder.field(f);
 				});
+		}
+
+		private static boolean isObjectContractMethod(Method method) {
+			try {
+				var objectMethod = Object.class.getMethod(method.getName(), method.getParameterTypes());
+				return objectMethod.getReturnType().equals(method.getReturnType());
+			} catch (NoSuchMethodException e) {
+				return false;
+			}
 		}
 	}
 }
