@@ -68,6 +68,21 @@ public class RecordTest {
 	}
 
 	@Test
+	public void testRecordFieldsWithIsPrefixAreExposed() {
+		var response = execute(
+			"query { chartSettingsTest { isCumulative isStacked isAutoAxisScale } }",
+			null
+		);
+		assertTrue(response.getErrors().isEmpty(), () -> response.getErrors().toString());
+
+		Map<String, Map<String, Boolean>> data = response.getData();
+		assertEquals(
+			Map.of("isCumulative", true, "isStacked", false, "isAutoAxisScale", true),
+			data.get("chartSettingsTest")
+		);
+	}
+
+	@Test
 	public void testEntireContext() {
 		var type = Map
 			.of(

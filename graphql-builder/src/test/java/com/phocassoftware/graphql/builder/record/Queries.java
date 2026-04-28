@@ -56,6 +56,21 @@ public class Queries {
 		return List.of(new DogRecord("Lola", "LikesBones", Optional.of("fluffy")), new CatRecord("Mavi", "LikesCheese", Optional.of("Angry")));
 	}
 
+	@Query
+	public static ChartSettingsRecord chartSettingsTest() {
+		return new ChartSettingsRecord(
+			true,
+			false,
+			true
+		);
+	}
+
+	static final record ChartSettingsRecord(
+		boolean isCumulative,
+		boolean isStacked,
+		boolean isAutoAxisScale
+	) {}
+
 	@GraphQLDescription("record Type")
 	static final record InputType(
 		@GraphQLDescription("the name") String name,

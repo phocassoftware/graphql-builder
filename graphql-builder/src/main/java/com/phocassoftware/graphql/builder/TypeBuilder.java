@@ -215,7 +215,13 @@ public abstract class TypeBuilder {
 				.filter(method -> !method.isAnnotationPresent(GraphQLIgnore.class))
 				.filter(method -> !Modifier.isStatic(method.getModifiers()))
 				.filter(method -> !method.getReturnType().equals(void.class))
-				.filter(method -> !method.getName().startsWith("get") && !method.getName().startsWith("is"))
+				.filter(method -> {
+					var methodName = method.getName();
+					if (methodName.startsWith("get") || methodName.startsWith("is")) {
+						return fieldsByName.containsKey(methodName);
+					}
+					return true;
+				})
 				.forEach(method -> {
 					var field = fieldsByName.get(method.getName());
 					if (field != null && field.isAnnotationPresent(GraphQLIgnore.class)) {
