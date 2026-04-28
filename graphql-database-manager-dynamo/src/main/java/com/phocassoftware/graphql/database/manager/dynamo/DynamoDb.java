@@ -71,7 +71,6 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValueUpdate;
 import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
-import software.amazon.awssdk.services.dynamodb.model.DynamoDbException;
 import software.amazon.awssdk.services.dynamodb.model.DeleteRequest;
 import software.amazon.awssdk.services.dynamodb.model.KeysAndAttributes;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
@@ -415,9 +414,7 @@ public class DynamoDb extends DatabaseDriver {
 				}
 			});
 
-		if (!links.isEmpty()) {
-			item.put("links", AttributeValue.builder().m(links).build());
-		}
+		item.put("links", AttributeValue.builder().m(links).build());
 		setSource(entity, entityTable, getLinks(entity), organisationId);
 
 		String secondaryOrganisation = TableUtil.getSecondaryOrganisation(entity);
@@ -1111,15 +1108,7 @@ public class DynamoDb extends DatabaseDriver {
 							.updateExpression("DELETE links.#table :val ADD revision :revisionIncrement")
 							.expressionAttributeNames(k)
 							.expressionAttributeValues(v)
-					)
-					.handle((r, e) -> {
-						if (e != null && e.getCause() instanceof DynamoDbException) {
-							// Target item may not have links attribute — nothing to remove
-							return null;
-						}
-						if (e != null) throw new RuntimeException(e);
-						return r;
-					});
+					);
 			})
 			.toArray(CompletableFuture[]::new);
 
@@ -1152,7 +1141,7 @@ public class DynamoDb extends DatabaseDriver {
 					)
 					.handle((r, e) -> {
 						if (e != null) {
-							if (e.getCause() instanceof DynamoDbException) {
+							if (e.getCause() instanceof ConditionalCheckFailedException) {
 								Map<String, AttributeValue> m = new HashMap<>();
 								m.put(targetTable, targetIdAttribute);
 								v.put(":val", AttributeValue.builder().m(m).build());
@@ -1174,15 +1163,17 @@ public class DynamoDb extends DatabaseDriver {
 						return CompletableFuture.completedFuture(r);
 					})
 					.thenCompose(a -> a)
-					.handle((r, e) -> {
+					.handle((r, e) -> { // nasty if attribute now exists use first approach again...
 						if (e != null) {
-							if (e.getCause() instanceof DynamoDbException) {
+							if (e.getCause() instanceof ConditionalCheckFailedException) {
 								return client
 									.updateItem(
 										request -> request
 											.tableName(entityTable)
 											.key(targetKey)
-											.updateExpression("SET links = :val ADD revision :revisionIncrement")
+											.conditionExpression("attribute_exists(links)")
+											.updateExpression("ADD links.#table :val, revision :revisionIncrement")
+											.expressionAttributeNames(k)
 											.expressionAttributeValues(v)
 									);
 							} else {
@@ -1245,7 +1236,7 @@ public class DynamoDb extends DatabaseDriver {
 			)
 			.handle((r, e) -> {
 				if (e != null) {
-					if (e.getCause() instanceof DynamoDbException) {
+					if (e.getCause() instanceof ConditionalCheckFailedException) {
 						Map<String, AttributeValue> m = new HashMap<>();
 						m.put(targetTable, values.get(":val"));
 						values.put(":val", AttributeValue.builder().m(m).build());
@@ -1269,20 +1260,17 @@ public class DynamoDb extends DatabaseDriver {
 			.thenCompose(a -> a)
 			.handle((r, e) -> {
 				if (e != null) {
-					if (e.getCause() instanceof DynamoDbException) {
+					if (e.getCause() instanceof ConditionalCheckFailedException) {
 						return client
 							.updateItem(
 								request -> request
 									.tableName(entityTable)
 									.key(key)
-									.updateExpression("SET links = :val ADD revision :revisionIncrement")
+									.conditionExpression("attribute_exists(links)" + extraConditions)
+									.updateExpression("SET links.#table = :val ADD revision :revisionIncrement")
+									.expressionAttributeNames(k)
 									.expressionAttributeValues(values)
 									.returnValues(ReturnValue.UPDATED_NEW)
-									.applyMutation(mutator -> {
-										if (!extraConditions.isEmpty()) {
-											mutator.conditionExpression(extraConditions.substring(5));
-										}
-									})
 							);
 					} else {
 						throw new RuntimeException(e);
