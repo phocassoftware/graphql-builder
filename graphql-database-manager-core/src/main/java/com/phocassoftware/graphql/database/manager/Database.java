@@ -157,6 +157,14 @@ public class Database {
 		return driver.takeHistoryBackup(organisationId);
 	}
 
+	public <T extends Table> BackupItem toBackupItem(T entity) {
+		return driver.toBackupItem(organisationId, entity);
+	}
+
+	public <T extends Table> T fromBackupItem(BackupItem item, Class<T> type) {
+		return driver.fromBackupItem(item, type);
+	}
+
 	public CompletableFuture<Void> restoreBackup(List<BackupItem> entities) {
 		return driver.restoreBackup(entities);
 	}

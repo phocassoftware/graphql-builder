@@ -129,6 +129,14 @@ public class VirtualDatabase {
 		return database.querySecondaryUnique(type, id).join();
 	}
 
+	public <T extends Table> BackupItem toBackupItem(T entity) {
+		return database.toBackupItem(entity);
+	}
+
+	public <T extends Table> T fromBackupItem(BackupItem item, Class<T> type) {
+		return database.fromBackupItem(item, type);
+	}
+
 	public <T extends Table> Void restoreBackup(List<BackupItem> entities) {
 		return database.restoreBackup(entities).join();
 	}

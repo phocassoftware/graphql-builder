@@ -50,6 +50,10 @@ public abstract class DatabaseDriver {
 
 	public abstract CompletableFuture<List<HistoryBackupItem>> takeHistoryBackup(String organisationId);
 
+	public abstract <T extends Table> BackupItem toBackupItem(String organisationId, T entity);
+
+	public abstract <T extends Table> T fromBackupItem(BackupItem item, Class<T> type);
+
 	public abstract <T extends Table> CompletableFuture<List<T>> queryHistory(DatabaseQueryHistoryKey<T> key);
 
 	public abstract <T extends Table> CompletableFuture<List<T>> queryGlobal(Class<T> type, String value);
