@@ -909,6 +909,42 @@ public class DynamoDb extends DatabaseDriver {
 	}
 
 	@Override
+	public <T extends Table> BackupItem toBackupItem(String organisationId, T entity) {
+		Map<String, AttributeValue> item = buildPutEntity(organisationId, entity, false);
+		return new DynamoBackupItem(entityTable, item, mapper);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public <T extends Table> T fromBackupItem(BackupItem item, Class<T> type) {
+		// The backup item's getItem() contains the full DynamoDB item as a Map.
+		// The entity data is nested under the "item" key.
+		var fullItem = item.getItem();
+		var entityData = fullItem.get("item");
+		T entity;
+		if (entityData instanceof Map) {
+			entity = mapper.convertValue(entityData, type);
+		} else {
+			// Fallback: deserialize the full item directly
+			entity = mapper.convertValue(fullItem, type);
+		}
+		if (entity instanceof Table t) {
+			// Strip the table name prefix from the ID if present
+			String id = item.getId();
+			String tablePrefix = table(type) + ":";
+			if (id != null && id.startsWith(tablePrefix)) {
+				t.setId(id.substring(tablePrefix.length()));
+			}
+			var revision = fullItem.get("revision");
+			if (revision != null) {
+				t.setRevision(((Number) revision).longValue());
+			}
+			setSource(t, entityTable, item.getLinks(), item.getOrganisationId());
+		}
+		return entity;
+	}
+
+	@Override
 	public CompletableFuture<Void> restoreBackup(List<BackupItem> entities) {
 		return restoreBackup(entities, BackupTableType.Entity, TableUtil::toAttributes);
 	}
