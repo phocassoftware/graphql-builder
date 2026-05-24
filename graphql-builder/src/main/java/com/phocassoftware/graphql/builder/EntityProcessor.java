@@ -66,28 +66,36 @@ public class EntityProcessor {
 		for (var scalar : scalars) {
 			var coercing = scalar.getCoercing();
 			var type = coercing.getClass();
-			for (var method : type.getMethods()) {
-				if (method.isSynthetic()) {
-					continue;
+			Class<?> returnType = resolveScalarType(type);
+			if (returnType != null && !returnType.equals(Object.class)) {
+				if (returnType.equals(Long.class)) {
+					put(Long.TYPE, new ScalarEntity(scalar));
+				} else if (returnType.equals(Byte.class)) {
+					put(Byte.TYPE, new ScalarEntity(scalar));
+				} else if (returnType.equals(Character.class)) {
+					put(Character.TYPE, new ScalarEntity(scalar));
+				} else if (returnType.equals(Float.class)) {
+					put(Float.TYPE, new ScalarEntity(scalar));
+				} else if (returnType.equals(Short.class)) {
+					put(Short.TYPE, new ScalarEntity(scalar));
 				}
-				if ("parseValue".equals(method.getName())) {
-					var returnType = method.getReturnType();
-					if (returnType.equals(Long.class)) {
-						put(Long.TYPE, new ScalarEntity(scalar));
-					} else if (returnType.equals(Byte.class)) {
-						put(Byte.TYPE, new ScalarEntity(scalar));
-					} else if (returnType.equals(Character.class)) {
-						put(Character.TYPE, new ScalarEntity(scalar));
-					} else if (returnType.equals(Float.class)) {
-						put(Float.TYPE, new ScalarEntity(scalar));
-					} else if (returnType.equals(Short.class)) {
-						put(Short.TYPE, new ScalarEntity(scalar));
-					}
-					put(returnType, new ScalarEntity(scalar));
-					break;
-				}
+				put(returnType, new ScalarEntity(scalar));
 			}
 		}
+	}
+
+	private static Class<?> resolveScalarType(Class<?> coercingClass) {
+		Class<?> best = null;
+		for (var method : coercingClass.getMethods()) {
+			if (method.isSynthetic()) continue;
+			if (!"parseValue".equals(method.getName())) continue;
+			var returnType = method.getReturnType();
+			if (returnType.equals(Object.class)) continue;
+			if (best == null || method.getDeclaringClass() != Object.class) {
+				best = returnType;
+			}
+		}
+		return best;
 	}
 
 	private void put(Class<?> type, ScalarEntity entity) {
@@ -118,9 +126,16 @@ public class EntityProcessor {
 						if (type.isAnnotationPresent(Scalar.class)) {
 							return new ScalarEntity(directives, meta);
 						}
+						var packageName = type.getPackageName();
+						if (packageName.startsWith("java.") || packageName.startsWith("javax.") || packageName.startsWith("jakarta.")) {
+							return new ScalarEntity(Scalars.GraphQLString);
+						}
 						if (type.isEnum()) {
 							return new EnumEntity(directives, meta);
 						} else {
+							if (type.isInterface() && !type.isAnnotationPresent(com.phocassoftware.graphql.builder.annotations.OneOf.class)) {
+								return new ScalarEntity(Scalars.GraphQLString);
+							}
 							return new ObjectEntity(this, meta);
 						}
 					} catch (ReflectiveOperationException | RuntimeException e) {
