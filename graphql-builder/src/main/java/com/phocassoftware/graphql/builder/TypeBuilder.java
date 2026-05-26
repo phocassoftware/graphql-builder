@@ -14,7 +14,9 @@ package com.phocassoftware.graphql.builder;
 import com.phocassoftware.graphql.builder.annotations.Entity;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.GraphQLIgnore;
+import com.phocassoftware.graphql.builder.annotations.OneOf;
 import com.phocassoftware.graphql.builder.exceptions.DuplicateMethodNameException;
+import graphql.schema.GraphQLUnionType;
 import graphql.introspection.Introspection;
 import graphql.schema.FieldCoordinates;
 import graphql.schema.GraphQLInterfaceType;
@@ -246,6 +248,53 @@ public abstract class TypeBuilder {
 			} catch (NoSuchMethodException e) {
 				return false;
 			}
+		}
+	}
+
+	public static class OneOfUnion extends TypeBuilder {
+
+		public OneOfUnion(EntityProcessor entityProcessor, TypeMeta meta) {
+			super(entityProcessor, meta);
+		}
+
+		@Override
+		public GraphQLNamedOutputType buildType() {
+			var oneOf = meta.getType().getAnnotation(OneOf.class);
+			var name = EntityUtil.getName(meta);
+			var builder = GraphQLUnionType.newUnionType();
+			builder.name(name);
+
+			var description = meta.getType().getAnnotation(GraphQLDescription.class);
+			if (description != null) {
+				builder.description(description.value());
+			}
+
+			for (var oneOfType : oneOf.value()) {
+				var possible = entityProcessor.getEntity(oneOfType.type()).getInnerType(new TypeMeta(null, oneOfType.type(), oneOfType.type()));
+				builder.possibleType(GraphQLTypeReference.typeRef(possible.getName()));
+			}
+
+			entityProcessor
+				.getCodeRegistry()
+				.typeResolver(
+					name,
+					env -> {
+						for (var oneOfType : oneOf.value()) {
+							if (oneOfType.type().isInstance(env.getObject())) {
+								return (GraphQLObjectType) entityProcessor
+									.getEntity(oneOfType.type())
+									.getInnerType(new TypeMeta(null, oneOfType.type(), oneOfType.type()));
+							}
+						}
+						throw new RuntimeException("OneOf " + name + " does not support type " + env.getObject().getClass().getSimpleName());
+					}
+				);
+
+			return builder.build();
+		}
+
+		@Override
+		protected void processFields(String typeName, Builder graphType, GraphQLInterfaceType.Builder interfaceBuilder) {
 		}
 	}
 

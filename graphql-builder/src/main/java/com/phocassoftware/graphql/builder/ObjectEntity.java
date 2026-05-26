@@ -24,7 +24,9 @@ public class ObjectEntity extends EntityHolder {
 	private TypeBuilder typeBuilder;
 
 	public ObjectEntity(EntityProcessor entityProcessor, TypeMeta meta) {
-		if (meta.getType().isRecord()) {
+		if (meta.getType().isInterface() && meta.getType().isAnnotationPresent(OneOf.class)) {
+			typeBuilder = new TypeBuilder.OneOfUnion(entityProcessor, meta);
+		} else if (meta.getType().isRecord()) {
 			typeBuilder = new TypeBuilder.Record(entityProcessor, meta);
 		} else {
 			typeBuilder = new TypeBuilder.ObjectType(entityProcessor, meta);
