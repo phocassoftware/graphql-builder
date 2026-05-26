@@ -294,8 +294,7 @@ public abstract class TypeBuilder {
 		}
 
 		@Override
-		protected void processFields(String typeName, Builder graphType, GraphQLInterfaceType.Builder interfaceBuilder) {
-		}
+		protected void processFields(String typeName, Builder graphType, GraphQLInterfaceType.Builder interfaceBuilder) {}
 	}
 
 }
