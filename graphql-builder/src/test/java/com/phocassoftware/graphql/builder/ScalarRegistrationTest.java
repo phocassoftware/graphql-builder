@@ -58,11 +58,13 @@ public class ScalarRegistrationTest {
 
 	@Test
 	public void queryReturnsCustomScalarField() {
-		var result = graphQL.execute(
-			ExecutionInput.newExecutionInput()
-				.query("query { widgets { ... on TimedWidget { name timeZone } ... on SimpleWidget { name } } }")
-				.build()
-		);
+		var result = graphQL
+			.execute(
+				ExecutionInput
+					.newExecutionInput()
+					.query("query { widgets { ... on TimedWidget { name timeZone } ... on SimpleWidget { name } } }")
+					.build()
+			);
 
 		assertTrue(result.getErrors().isEmpty(), "Expected no errors but got: " + result.getErrors());
 		Map<String, List<Map<String, Object>>> data = result.getData();
