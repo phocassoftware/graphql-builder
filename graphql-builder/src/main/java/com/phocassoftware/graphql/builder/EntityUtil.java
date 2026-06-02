@@ -12,6 +12,7 @@
 package com.phocassoftware.graphql.builder;
 
 import com.phocassoftware.graphql.builder.annotations.Context;
+import com.phocassoftware.graphql.builder.annotations.GraphQLField;
 import com.phocassoftware.graphql.builder.annotations.GraphQLIgnore;
 import com.phocassoftware.graphql.builder.annotations.GraphQLName;
 import com.phocassoftware.graphql.builder.annotations.InputIgnore;
@@ -82,7 +83,9 @@ class EntityUtil {
 		if (method.getDeclaringClass().equals(Object.class)) {
 			return Optional.empty();
 		}
-		if (method.isAnnotationPresent(GraphQLIgnore.class)) {
+		// @GraphQLField overrules an inherited @GraphQLIgnore.
+		boolean forced = isForcedField(method);
+		if (!forced && isAnnotatedInHierarchy(method, GraphQLIgnore.class)) {
 			return Optional.empty();
 		}
 		// will also be on implementing class
@@ -99,7 +102,7 @@ class EntityUtil {
 				name = method.getName().substring("is".length(), "is".length() + 1).toLowerCase() + method.getName().substring("is".length() + 1);
 			}
 
-			if (fieldSpecifiesIgnore(method, name)) {
+			if (!forced && fieldSpecifiesIgnore(method, name)) {
 				return Optional.empty();
 			}
 
@@ -141,7 +144,9 @@ class EntityUtil {
 		if (method.getDeclaringClass().equals(Object.class)) {
 			return Optional.empty();
 		}
-		if (method.isAnnotationPresent(GraphQLIgnore.class)) {
+		// @GraphQLField overrules an inherited @GraphQLIgnore.
+		boolean forced = isForcedField(method);
+		if (!forced && isAnnotatedInHierarchy(method, GraphQLIgnore.class)) {
 			return Optional.empty();
 		}
 		// will also be on implementing class
@@ -154,7 +159,7 @@ class EntityUtil {
 			if (method.getParameterCount() == 1 && !method.isAnnotationPresent(InputIgnore.class)) {
 				String name = method.getName().substring("set".length(), "set".length() + 1).toLowerCase() + method.getName().substring("set".length() + 1);
 
-				if (fieldSpecifiesIgnore(method, name)) {
+				if (!forced && fieldSpecifiesIgnore(method, name)) {
 					return Optional.empty();
 				}
 
@@ -162,6 +167,50 @@ class EntityUtil {
 			}
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * Returns whether {@code method}, or any declaration it overrides in a superclass or interface, carries the
+	 * given annotation. Method annotations are not inherited by the JVM, so this walks the type hierarchy to
+	 * give {@link GraphQLIgnore} (and its {@link GraphQLField} override) effect across implementations.
+	 */
+	static boolean isAnnotatedInHierarchy(Method method, Class<? extends Annotation> annotation) {
+		return declaredWithAnnotation(method.getDeclaringClass(), method.getName(), method.getParameterTypes(), annotation);
+	}
+
+	/** Whether {@code method} should be hidden from the schema because of an (inherited) {@link GraphQLIgnore}. */
+	static boolean isIgnored(Method method) {
+		if (isForcedField(method)) {
+			return false;
+		}
+		return isAnnotatedInHierarchy(method, GraphQLIgnore.class);
+	}
+
+	/** Whether {@code method} carries an (inherited) {@link GraphQLField}, which overrules any {@link GraphQLIgnore}. */
+	static boolean isForcedField(Method method) {
+		return isAnnotatedInHierarchy(method, GraphQLField.class);
+	}
+
+	private static boolean declaredWithAnnotation(Class<?> type, String name, Class<?>[] parameterTypes, Class<? extends Annotation> annotation) {
+		if (type == null) {
+			return false;
+		}
+		try {
+			if (type.getDeclaredMethod(name, parameterTypes).isAnnotationPresent(annotation)) {
+				return true;
+			}
+		} catch (NoSuchMethodException e) {
+			// not declared at this level; keep walking up
+		}
+		if (declaredWithAnnotation(type.getSuperclass(), name, parameterTypes, annotation)) {
+			return true;
+		}
+		for (var parent : type.getInterfaces()) {
+			if (declaredWithAnnotation(parent, name, parameterTypes, annotation)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	static boolean fieldSpecifiesIgnore(Method method, String name) {

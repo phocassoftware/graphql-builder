@@ -213,7 +213,7 @@ public abstract class TypeBuilder {
 				.filter(method -> !method.isSynthetic())
 				.filter(method -> !method.getDeclaringClass().equals(Object.class))
 				.filter(method -> !isObjectContractMethod(method))
-				.filter(method -> !method.isAnnotationPresent(GraphQLIgnore.class))
+				.filter(method -> !EntityUtil.isIgnored(method))
 				.filter(method -> !Modifier.isStatic(method.getModifiers()))
 				.filter(method -> !method.getReturnType().equals(void.class))
 				.filter(method -> {
@@ -225,7 +225,7 @@ public abstract class TypeBuilder {
 				})
 				.forEach(method -> {
 					var field = fieldsByName.get(method.getName());
-					if (field != null && field.isAnnotationPresent(GraphQLIgnore.class)) {
+					if (field != null && field.isAnnotationPresent(GraphQLIgnore.class) && !EntityUtil.isForcedField(method)) {
 						return;
 					}
 					var name = field != null
