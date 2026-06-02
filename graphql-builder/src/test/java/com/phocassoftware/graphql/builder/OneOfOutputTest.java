@@ -100,6 +100,31 @@ public class OneOfOutputTest {
 		assertTrue(members.contains("A") && members.contains("B"), () -> "expected A and B in " + members);
 	}
 
+	// --- comment 1: only field-less interfaces become unions ---
+
+	interface Marker {}
+
+	interface WithGetter {
+		String getName();
+	}
+
+	interface WithStaticOnly {
+		static int answer() {
+			return 42;
+		}
+	}
+
+	@Test
+	public void testOnlyFieldLessInterfacesAreTreatedAsUnions() {
+		// field-less interfaces (no getters) are represented as unions
+		assertEquals(false, EntityUtil.hasFields(Marker.class));
+		assertEquals(false, EntityUtil.hasFields(WithStaticOnly.class));
+		assertEquals(false, EntityUtil.hasFields(com.phocassoftware.graphql.builder.oneofoutput.Animal.class));
+		assertEquals(false, EntityUtil.hasFields(com.phocassoftware.graphql.builder.oneofoutput.Shape.class));
+		// an interface that declares a getter has fields and must not be turned into a union
+		assertEquals(true, EntityUtil.hasFields(WithGetter.class));
+	}
+
 	@Test
 	public void testInterfaceWithNoDiscoverableImplementationsFailsWithClearMessage() {
 		var error = assertThrows(

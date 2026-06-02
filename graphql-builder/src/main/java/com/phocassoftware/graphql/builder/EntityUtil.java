@@ -108,6 +108,32 @@ class EntityUtil {
 		return Optional.empty();
 	}
 
+	/**
+	 * Whether {@code type} exposes any GraphQL fields, i.e. declares a getter-style method. A field-less
+	 * interface cannot be a GraphQL interface type (which requires at least one field), so it is represented
+	 * as a union of its implementations instead.
+	 */
+	static boolean hasFields(Class<?> type) {
+		for (var method : type.getMethods()) {
+			if (method.isSynthetic()) {
+				continue;
+			}
+			if (method.getDeclaringClass().equals(Object.class)) {
+				continue;
+			}
+			if (Modifier.isStatic(method.getModifiers())) {
+				continue;
+			}
+			if (method.isAnnotationPresent(GraphQLIgnore.class)) {
+				continue;
+			}
+			if (method.getParameterCount() == 0 && method.getName().matches("(get|is)[A-Z].*")) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public static Optional<String> setter(Method method) {
 		if (method.isSynthetic()) {
 			return Optional.empty();
