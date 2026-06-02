@@ -11,23 +11,15 @@
  */
 package com.phocassoftware.graphql.builder.oneofoutput;
 
-import com.phocassoftware.graphql.builder.annotations.Mutation;
-import com.phocassoftware.graphql.builder.annotations.Query;
+import com.phocassoftware.graphql.builder.annotations.Entity;
+import com.phocassoftware.graphql.builder.annotations.SchemaOption;
 
-public class Queries {
+// Output-only sealed interface: produces a union without the @OneOf annotation.
+public sealed interface Animal {
 
-	@Query
-	public static Shape getShape() {
-		return new Shape.Circle(5.0);
-	}
+	@Entity(SchemaOption.TYPE)
+	record Cat(String name) implements Animal {}
 
-	@Mutation
-	public static Shape putShape(Shape shape) {
-		return shape;
-	}
-
-	@Query
-	public static Animal getAnimal() {
-		return new Animal.Cat("Mavi");
-	}
+	@Entity(SchemaOption.TYPE)
+	record Dog(String name) implements Animal {}
 }

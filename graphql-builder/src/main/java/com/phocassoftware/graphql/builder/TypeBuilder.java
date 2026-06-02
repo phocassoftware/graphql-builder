@@ -14,7 +14,6 @@ package com.phocassoftware.graphql.builder;
 import com.phocassoftware.graphql.builder.annotations.Entity;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.GraphQLIgnore;
-import com.phocassoftware.graphql.builder.annotations.OneOf;
 import com.phocassoftware.graphql.builder.exceptions.DuplicateMethodNameException;
 import graphql.schema.GraphQLUnionType;
 import graphql.introspection.Introspection;
@@ -251,26 +250,34 @@ public abstract class TypeBuilder {
 		}
 	}
 
-	public static class OneOfUnion extends TypeBuilder {
+	/** Represents an interface as a union of its implementations (permitted subclasses or @Entity implementers). */
+	public static class InterfaceUnion extends TypeBuilder {
 
-		public OneOfUnion(EntityProcessor entityProcessor, TypeMeta meta) {
+		public InterfaceUnion(EntityProcessor entityProcessor, TypeMeta meta) {
 			super(entityProcessor, meta);
 		}
 
 		@Override
 		public GraphQLNamedOutputType buildType() {
-			var oneOf = meta.getType().getAnnotation(OneOf.class);
+			var type = meta.getType();
 			var name = EntityUtil.getName(meta);
 			var builder = GraphQLUnionType.newUnionType();
 			builder.name(name);
 
-			var description = meta.getType().getAnnotation(GraphQLDescription.class);
+			var description = type.getAnnotation(GraphQLDescription.class);
 			if (description != null) {
 				builder.description(description.value());
 			}
 
-			for (var oneOfType : oneOf.value()) {
-				var possible = entityProcessor.getEntity(oneOfType.type()).getInnerType(new TypeMeta(null, oneOfType.type(), oneOfType.type()));
+			var members = entityProcessor.getImplementations(type);
+			if (members.isEmpty()) {
+				throw new RuntimeException(
+					"Interface " + type.getName() + " cannot be used as an output type: no implementations were found to form its union. " +
+						"Make it a sealed interface, or annotate its implementations with @Entity."
+				);
+			}
+			for (var member : members) {
+				var possible = entityProcessor.getEntity(member).getInnerType(new TypeMeta(null, member, member));
 				builder.possibleType(GraphQLTypeReference.typeRef(possible.getName()));
 			}
 
@@ -279,14 +286,12 @@ public abstract class TypeBuilder {
 				.typeResolver(
 					name,
 					env -> {
-						for (var oneOfType : oneOf.value()) {
-							if (oneOfType.type().isInstance(env.getObject())) {
-								return (GraphQLObjectType) entityProcessor
-									.getEntity(oneOfType.type())
-									.getInnerType(new TypeMeta(null, oneOfType.type(), oneOfType.type()));
+						for (var member : members) {
+							if (member.isInstance(env.getObject())) {
+								return (GraphQLObjectType) entityProcessor.getEntity(member).getInnerType(new TypeMeta(null, member, member));
 							}
 						}
-						throw new RuntimeException("OneOf " + name + " does not support type " + env.getObject().getClass().getSimpleName());
+						throw new RuntimeException("Union " + name + " does not support type " + env.getObject().getClass().getSimpleName());
 					}
 				);
 

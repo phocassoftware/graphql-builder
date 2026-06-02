@@ -9,25 +9,11 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.phocassoftware.graphql.builder.oneofoutput;
+package com.phocassoftware.graphql.builder.nomembersoutput;
 
-import com.phocassoftware.graphql.builder.annotations.Mutation;
-import com.phocassoftware.graphql.builder.annotations.Query;
+// A non-sealed interface whose implementation is not annotated with @Entity, so no union members can
+// be discovered. The schema build must fail with a clear, actionable message.
+public interface Mystery {
 
-public class Queries {
-
-	@Query
-	public static Shape getShape() {
-		return new Shape.Circle(5.0);
-	}
-
-	@Mutation
-	public static Shape putShape(Shape shape) {
-		return shape;
-	}
-
-	@Query
-	public static Animal getAnimal() {
-		return new Animal.Cat("Mavi");
-	}
+	record Hidden(String name) implements Mystery {}
 }

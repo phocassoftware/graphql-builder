@@ -9,25 +9,18 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.phocassoftware.graphql.builder.oneofoutput;
+package com.phocassoftware.graphql.builder.nonsealedoutput;
 
-import com.phocassoftware.graphql.builder.annotations.Mutation;
-import com.phocassoftware.graphql.builder.annotations.Query;
+import com.phocassoftware.graphql.builder.annotations.Entity;
+import com.phocassoftware.graphql.builder.annotations.SchemaOption;
 
-public class Queries {
+// A non-sealed, field-less interface used as an output type. Its @Entity implementations are
+// discovered during the scan, so it still produces a union.
+public interface Thing {
 
-	@Query
-	public static Shape getShape() {
-		return new Shape.Circle(5.0);
-	}
+	@Entity(SchemaOption.TYPE)
+	record A(String name) implements Thing {}
 
-	@Mutation
-	public static Shape putShape(Shape shape) {
-		return shape;
-	}
-
-	@Query
-	public static Animal getAnimal() {
-		return new Animal.Cat("Mavi");
-	}
+	@Entity(SchemaOption.TYPE)
+	record B(String name) implements Thing {}
 }

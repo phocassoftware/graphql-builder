@@ -25,7 +25,9 @@ import graphql.schema.GraphQLType;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,10 @@ public class EntityProcessor {
 	private final Map<String, EntityHolder> entities;
 	private final MethodProcessor methodProcessor;
 
+	// All @Entity-annotated classes discovered during the scan. Used to find the implementations of an
+	// interface so it can be represented as a union, even when the interface is not sealed.
+	private Set<Class<?>> entityTypes = Set.of();
+
 	EntityProcessor(DataFetcherRunner dataFetcherRunner, List<GraphQLScalarType> scalars, DirectivesSchema directives) {
 		this.methodProcessor = new MethodProcessor(dataFetcherRunner, this, directives);
 		this.entities = new HashMap<>();
@@ -47,6 +53,33 @@ public class EntityProcessor {
 		addScalars(scalars);
 
 		this.directives = directives;
+	}
+
+	void setEntityTypes(Set<Class<?>> entityTypes) {
+		this.entityTypes = entityTypes;
+	}
+
+	/**
+	 * Returns the concrete @Entity classes that implement the given interface, used as the members of the
+	 * union generated for that interface.
+	 */
+	List<Class<?>> getImplementations(Class<?> interfaceType) {
+		var implementations = new ArrayList<Class<?>>();
+		var permitted = interfaceType.getPermittedSubclasses();
+		if (permitted != null) {
+			for (var subType : permitted) {
+				implementations.add(subType);
+			}
+		}
+		for (var candidate : entityTypes) {
+			if (candidate == interfaceType || candidate.isInterface() || Modifier.isAbstract(candidate.getModifiers())) {
+				continue;
+			}
+			if (interfaceType.isAssignableFrom(candidate) && !implementations.contains(candidate)) {
+				implementations.add(candidate);
+			}
+		}
+		return implementations;
 	}
 
 	private void addDefaults() {
@@ -133,9 +166,6 @@ public class EntityProcessor {
 						if (type.isEnum()) {
 							return new EnumEntity(directives, meta);
 						} else {
-							if (type.isInterface() && !type.isAnnotationPresent(com.phocassoftware.graphql.builder.annotations.OneOf.class)) {
-								return new ScalarEntity(Scalars.GraphQLString);
-							}
 							return new ObjectEntity(this, meta);
 						}
 					} catch (ReflectiveOperationException | RuntimeException e) {
