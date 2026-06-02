@@ -25,7 +25,9 @@ import graphql.schema.GraphQLType;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,10 @@ public class EntityProcessor {
 	private final Map<String, EntityHolder> entities;
 	private final MethodProcessor methodProcessor;
 
+	// All @Entity-annotated classes discovered during the scan. Used to find the implementations of an
+	// interface so it can be represented as a union, even when the interface is not sealed.
+	private Set<Class<?>> entityTypes = Set.of();
+
 	EntityProcessor(DataFetcherRunner dataFetcherRunner, List<GraphQLScalarType> scalars, DirectivesSchema directives) {
 		this.methodProcessor = new MethodProcessor(dataFetcherRunner, this, directives);
 		this.entities = new HashMap<>();
@@ -47,6 +53,33 @@ public class EntityProcessor {
 		addScalars(scalars);
 
 		this.directives = directives;
+	}
+
+	void setEntityTypes(Set<Class<?>> entityTypes) {
+		this.entityTypes = entityTypes;
+	}
+
+	/**
+	 * Returns the concrete @Entity classes that implement the given interface, used as the members of the
+	 * union generated for that interface.
+	 */
+	List<Class<?>> getImplementations(Class<?> interfaceType) {
+		var implementations = new ArrayList<Class<?>>();
+		var permitted = interfaceType.getPermittedSubclasses();
+		if (permitted != null) {
+			for (var subType : permitted) {
+				implementations.add(subType);
+			}
+		}
+		for (var candidate : entityTypes) {
+			if (candidate == interfaceType || candidate.isInterface() || Modifier.isAbstract(candidate.getModifiers())) {
+				continue;
+			}
+			if (interfaceType.isAssignableFrom(candidate) && !implementations.contains(candidate)) {
+				implementations.add(candidate);
+			}
+		}
+		return implementations;
 	}
 
 	private void addDefaults() {
@@ -66,28 +99,36 @@ public class EntityProcessor {
 		for (var scalar : scalars) {
 			var coercing = scalar.getCoercing();
 			var type = coercing.getClass();
-			for (var method : type.getMethods()) {
-				if (method.isSynthetic()) {
-					continue;
+			Class<?> returnType = resolveScalarType(type);
+			if (returnType != null && !returnType.equals(Object.class)) {
+				if (returnType.equals(Long.class)) {
+					put(Long.TYPE, new ScalarEntity(scalar));
+				} else if (returnType.equals(Byte.class)) {
+					put(Byte.TYPE, new ScalarEntity(scalar));
+				} else if (returnType.equals(Character.class)) {
+					put(Character.TYPE, new ScalarEntity(scalar));
+				} else if (returnType.equals(Float.class)) {
+					put(Float.TYPE, new ScalarEntity(scalar));
+				} else if (returnType.equals(Short.class)) {
+					put(Short.TYPE, new ScalarEntity(scalar));
 				}
-				if ("parseValue".equals(method.getName())) {
-					var returnType = method.getReturnType();
-					if (returnType.equals(Long.class)) {
-						put(Long.TYPE, new ScalarEntity(scalar));
-					} else if (returnType.equals(Byte.class)) {
-						put(Byte.TYPE, new ScalarEntity(scalar));
-					} else if (returnType.equals(Character.class)) {
-						put(Character.TYPE, new ScalarEntity(scalar));
-					} else if (returnType.equals(Float.class)) {
-						put(Float.TYPE, new ScalarEntity(scalar));
-					} else if (returnType.equals(Short.class)) {
-						put(Short.TYPE, new ScalarEntity(scalar));
-					}
-					put(returnType, new ScalarEntity(scalar));
-					break;
-				}
+				put(returnType, new ScalarEntity(scalar));
 			}
 		}
+	}
+
+	private static Class<?> resolveScalarType(Class<?> coercingClass) {
+		Class<?> best = null;
+		for (var method : coercingClass.getMethods()) {
+			if (method.isSynthetic()) continue;
+			if (!"parseValue".equals(method.getName())) continue;
+			var returnType = method.getReturnType();
+			if (returnType.equals(Object.class)) continue;
+			if (best == null || method.getDeclaringClass() != Object.class) {
+				best = returnType;
+			}
+		}
+		return best;
 	}
 
 	private void put(Class<?> type, ScalarEntity entity) {
@@ -117,6 +158,10 @@ public class EntityProcessor {
 					try {
 						if (type.isAnnotationPresent(Scalar.class)) {
 							return new ScalarEntity(directives, meta);
+						}
+						var packageName = type.getPackageName();
+						if (packageName.startsWith("java.") || packageName.startsWith("javax.") || packageName.startsWith("jakarta.")) {
+							return new ScalarEntity(Scalars.GraphQLString);
 						}
 						if (type.isEnum()) {
 							return new EnumEntity(directives, meta);

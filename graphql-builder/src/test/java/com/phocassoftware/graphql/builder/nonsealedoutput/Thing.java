@@ -9,14 +9,18 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.phocassoftware.graphql.builder.annotations;
+package com.phocassoftware.graphql.builder.nonsealedoutput;
 
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
+import com.phocassoftware.graphql.builder.annotations.Entity;
+import com.phocassoftware.graphql.builder.annotations.SchemaOption;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
+// A non-sealed, field-less interface used as an output type. Its @Entity implementations are
+// discovered during the scan, so it still produces a union.
+public interface Thing {
 
-@Retention(RUNTIME)
-@Target({ ElementType.METHOD, ElementType.FIELD, ElementType.RECORD_COMPONENT, ElementType.CONSTRUCTOR })
-public @interface GraphQLIgnore {}
+	@Entity(SchemaOption.TYPE)
+	record A(String name) implements Thing {}
+
+	@Entity(SchemaOption.TYPE)
+	record B(String name) implements Thing {}
+}

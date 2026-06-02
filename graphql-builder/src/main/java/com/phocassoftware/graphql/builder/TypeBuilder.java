@@ -15,6 +15,7 @@ import com.phocassoftware.graphql.builder.annotations.Entity;
 import com.phocassoftware.graphql.builder.annotations.GraphQLDescription;
 import com.phocassoftware.graphql.builder.annotations.GraphQLIgnore;
 import com.phocassoftware.graphql.builder.exceptions.DuplicateMethodNameException;
+import graphql.schema.GraphQLUnionType;
 import graphql.introspection.Introspection;
 import graphql.schema.FieldCoordinates;
 import graphql.schema.GraphQLInterfaceType;
@@ -248,4 +249,57 @@ public abstract class TypeBuilder {
 			}
 		}
 	}
+
+	/** Represents an interface as a union of its implementations (permitted subclasses or @Entity implementers). */
+	public static class InterfaceUnion extends TypeBuilder {
+
+		public InterfaceUnion(EntityProcessor entityProcessor, TypeMeta meta) {
+			super(entityProcessor, meta);
+		}
+
+		@Override
+		public GraphQLNamedOutputType buildType() {
+			var type = meta.getType();
+			var name = EntityUtil.getName(meta);
+			var builder = GraphQLUnionType.newUnionType();
+			builder.name(name);
+
+			var description = type.getAnnotation(GraphQLDescription.class);
+			if (description != null) {
+				builder.description(description.value());
+			}
+
+			var members = entityProcessor.getImplementations(type);
+			if (members.isEmpty()) {
+				throw new RuntimeException(
+					"Interface " + type.getName() + " cannot be used as an output type: no implementations were found to form its union. " +
+						"Make it a sealed interface, or annotate its implementations with @Entity."
+				);
+			}
+			for (var member : members) {
+				var possible = entityProcessor.getEntity(member).getInnerType(new TypeMeta(null, member, member));
+				builder.possibleType(GraphQLTypeReference.typeRef(possible.getName()));
+			}
+
+			entityProcessor
+				.getCodeRegistry()
+				.typeResolver(
+					name,
+					env -> {
+						for (var member : members) {
+							if (member.isInstance(env.getObject())) {
+								return (GraphQLObjectType) entityProcessor.getEntity(member).getInnerType(new TypeMeta(null, member, member));
+							}
+						}
+						throw new RuntimeException("Union " + name + " does not support type " + env.getObject().getClass().getSimpleName());
+					}
+				);
+
+			return builder.build();
+		}
+
+		@Override
+		protected void processFields(String typeName, Builder graphType, GraphQLInterfaceType.Builder interfaceBuilder) {}
+	}
+
 }

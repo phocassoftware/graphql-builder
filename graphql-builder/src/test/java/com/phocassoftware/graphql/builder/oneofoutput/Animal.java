@@ -9,14 +9,17 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.phocassoftware.graphql.builder.annotations;
+package com.phocassoftware.graphql.builder.oneofoutput;
 
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
+import com.phocassoftware.graphql.builder.annotations.Entity;
+import com.phocassoftware.graphql.builder.annotations.SchemaOption;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
+// Output-only sealed interface: produces a union without the @OneOf annotation.
+public sealed interface Animal {
 
-@Retention(RUNTIME)
-@Target({ ElementType.METHOD, ElementType.FIELD, ElementType.RECORD_COMPONENT, ElementType.CONSTRUCTOR })
-public @interface GraphQLIgnore {}
+	@Entity(SchemaOption.TYPE)
+	record Cat(String name) implements Animal {}
+
+	@Entity(SchemaOption.TYPE)
+	record Dog(String name) implements Animal {}
+}

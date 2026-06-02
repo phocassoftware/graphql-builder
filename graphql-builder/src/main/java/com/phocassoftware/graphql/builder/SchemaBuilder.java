@@ -46,6 +46,7 @@ public class SchemaBuilder {
 	}
 
 	private SchemaBuilder processTypes(Set<Class<?>> types) {
+		this.entityProcessor.setEntityTypes(types);
 		for (var type : types) {
 			TypeMeta meta = new TypeMeta(null, type, type);
 

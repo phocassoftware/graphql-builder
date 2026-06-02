@@ -9,14 +9,11 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.phocassoftware.graphql.builder.annotations;
+package com.phocassoftware.graphql.builder.nomembersoutput;
 
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
+// A non-sealed interface whose implementation is not annotated with @Entity, so no union members can
+// be discovered. The schema build must fail with a clear, actionable message.
+public interface Mystery {
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
-
-@Retention(RUNTIME)
-@Target({ ElementType.METHOD, ElementType.FIELD, ElementType.RECORD_COMPONENT, ElementType.CONSTRUCTOR })
-public @interface GraphQLIgnore {}
+	record Hidden(String name) implements Mystery {}
+}

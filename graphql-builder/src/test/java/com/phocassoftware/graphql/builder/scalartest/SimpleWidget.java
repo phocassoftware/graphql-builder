@@ -9,14 +9,6 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package com.phocassoftware.graphql.builder.annotations;
+package com.phocassoftware.graphql.builder.scalartest;
 
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
-
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
-
-@Retention(RUNTIME)
-@Target({ ElementType.METHOD, ElementType.FIELD, ElementType.RECORD_COMPONENT, ElementType.CONSTRUCTOR })
-public @interface GraphQLIgnore {}
+public record SimpleWidget(String name) implements Widget {}
