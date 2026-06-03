@@ -19,9 +19,9 @@ import graphql.introspection.Introspection;
 import graphql.schema.GraphQLAppliedDirective;
 import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLInputType;
+import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLOutputType;
 import graphql.schema.GraphQLScalarType;
-import graphql.schema.GraphQLType;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
@@ -146,7 +146,7 @@ public class EntityProcessor {
 		entities.put(name, entity);
 	}
 
-	Set<GraphQLType> getAdditionalTypes() {
+	Set<GraphQLNamedType> getAdditionalTypes() {
 		return entities.values().stream().flatMap(EntityHolder::types).collect(Collectors.toSet());
 	}
 
