@@ -68,7 +68,17 @@ public class EntityProcessor {
 		var permitted = interfaceType.getPermittedSubclasses();
 		if (permitted != null) {
 			for (var subType : permitted) {
-				implementations.add(subType);
+				// A union member must be a concrete object type. A permitted subtype that is itself an
+				// interface or abstract class (a nested sealed hierarchy) is flattened to its concrete leaves.
+				if (subType.isInterface() || Modifier.isAbstract(subType.getModifiers())) {
+					for (var leaf : getImplementations(subType)) {
+						if (!implementations.contains(leaf)) {
+							implementations.add(leaf);
+						}
+					}
+				} else if (!implementations.contains(subType)) {
+					implementations.add(subType);
+				}
 			}
 		}
 		for (var candidate : entityTypes) {
