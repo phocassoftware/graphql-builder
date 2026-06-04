@@ -110,7 +110,7 @@ public class EntityProcessor {
 			var coercing = scalar.getCoercing();
 			var type = coercing.getClass();
 			Class<?> returnType = resolveScalarType(type);
-			if (returnType != null && !returnType.equals(Object.class)) {
+			if (returnType != null) {
 				if (returnType.equals(Long.class)) {
 					put(Long.TYPE, new ScalarEntity(scalar));
 				} else if (returnType.equals(Byte.class)) {
@@ -138,7 +138,9 @@ public class EntityProcessor {
 				best = returnType;
 			}
 		}
-		return best;
+		// A coercing whose parseValue only ever yields Object (e.g. the JSON scalar) genuinely targets
+		// Object, so bind it to Object.class rather than leaving it unmapped.
+		return best != null ? best : Object.class;
 	}
 
 	private void put(Class<?> type, ScalarEntity entity) {
