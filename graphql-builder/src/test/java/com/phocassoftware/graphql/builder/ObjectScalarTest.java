@@ -12,11 +12,14 @@
 package com.phocassoftware.graphql.builder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
 import graphql.scalars.ExtendedScalars;
+import graphql.schema.GraphQLSchema;
+import graphql.schema.GraphQLTypeUtil;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -30,12 +33,26 @@ public class ObjectScalarTest {
 		assertEquals(Map.of("id", "some value"), data.get("getPayload"));
 	}
 
+	@Test
+	public void objectParameterAppearsAsArgumentOnGeneratedField() {
+		var field = buildSchema().getQueryType().getField("echoPayload");
+
+		assertNotNull(field.getArgument("settings"), "Object-typed 'settings' argument is missing from the generated field");
+		assertEquals("JSON", GraphQLTypeUtil.simplePrint(GraphQLTypeUtil.unwrapNonNull(field.getArgument("settings").getType())));
+	}
+
+	@Test
+	public void objectParameterIsRoundTrippedThroughTheField() {
+		Map<String, Object> data = execute("{ echoPayload(settings: {id: \"some value\"}) }").getData();
+		assertEquals(Map.of("id", "some value"), data.get("echoPayload"));
+	}
+
+	private GraphQLSchema buildSchema() {
+		return SchemaBuilder.builder().classpath("com.phocassoftware.graphql.builder.objectscalar").scalar(ExtendedScalars.Json).build().build();
+	}
+
 	private ExecutionResult execute(String query) {
-		GraphQL schema = GraphQL
-			.newGraphQL(
-				SchemaBuilder.builder().classpath("com.phocassoftware.graphql.builder.objectscalar").scalar(ExtendedScalars.Json).build().build()
-			)
-			.build();
+		GraphQL schema = GraphQL.newGraphQL(buildSchema()).build();
 		ExecutionResult result = schema.execute(ExecutionInput.newExecutionInput().query(query).build());
 		if (!result.getErrors().isEmpty()) {
 			throw new RuntimeException(result.getErrors().toString());

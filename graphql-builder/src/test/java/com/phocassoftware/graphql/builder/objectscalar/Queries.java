@@ -21,4 +21,9 @@ public class Queries {
 	public static Object getPayload() {
 		return Map.of("id", "some value");
 	}
+
+	@Query
+	public static Object echoPayload(Object settings) {
+		return settings;
+	}
 }

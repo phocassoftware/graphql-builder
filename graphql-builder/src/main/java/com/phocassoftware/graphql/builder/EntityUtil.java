@@ -243,7 +243,7 @@ class EntityUtil {
 				return true;
 			}
 		}
-		return (class1.isAssignableFrom(GraphQLContext.class) || class1.isAssignableFrom(DataFetchingEnvironment.class) || class1
+		return (GraphQLContext.class.isAssignableFrom(class1) || DataFetchingEnvironment.class.isAssignableFrom(class1) || class1
 			.isAnnotationPresent(Context.class));
 	}
 
