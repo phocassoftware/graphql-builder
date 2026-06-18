@@ -54,6 +54,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -154,7 +155,13 @@ public class DynamoDb extends DatabaseDriver {
 		if (classPath != null) {
 			java.util.List<Class<Table>> tableObjects;
 			try (var scanResult = new ClassGraph().acceptPackages(classPath).enableClassInfo().scan()) {
-				tableObjects = scanResult.getSubclasses(Table.class).loadClasses(Table.class);
+				tableObjects = scanResult
+					.getAllClasses()
+					.loadClasses()
+					.stream()
+					.filter(clazz -> clazz != Table.class && Table.class.isAssignableFrom(clazz))
+					.map(clazz -> (Class<Table>) clazz)
+					.toList();
 			}
 
 			this.hashKeyExpander = new HashMap<>();
@@ -562,6 +569,30 @@ public class DynamoDb extends DatabaseDriver {
 		Class<Table> query = (Class<Table>) type;
 		List<DatabaseKey<Table>> keys = links.stream().map(link -> createDatabaseKey(organisationId, query, link)).collect(Collectors.toList());
 		return items.loadMany(keys);
+	}
+
+	@Override
+	public CompletableFuture<List<Table>> getViaLinks(String organisationId, Table entry, TableDataLoader<DatabaseKey<Table>> items) {
+		if (getLinks(entry).isEmpty()) {
+			return CompletableFuture.completedFuture(Collections.emptyList());
+		}
+		if (this.classes == null) {
+			throw new UnsupportedOperationException("Cascade delete requires a configured classPath so linked table types can be resolved");
+		}
+
+		List<DatabaseKey<Table>> keys = new ArrayList<>();
+		for (var link : getLinks(entry).entrySet()) {
+			var type = this.classes.get(link.getKey());
+			if (type == null) {
+				throw new RuntimeException("Could not resolve linked table type " + link.getKey());
+			}
+			Class<Table> query = (Class<Table>) type;
+			link.getValue().stream().map(id -> createDatabaseKey(organisationId, query, id)).forEach(keys::add);
+		}
+
+		return items
+			.loadMany(keys)
+			.thenApply(entities -> entities.stream().filter(Objects::nonNull).map(entity -> (Table) entity).collect(Collectors.toList()));
 	}
 
 	@Override

@@ -21,6 +21,7 @@ import com.phocassoftware.graphql.database.manager.util.TableCoreUtil;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -220,10 +221,29 @@ public class Database {
 	}
 
 	public <T extends Table> CompletableFuture<T> delete(T entity, boolean deleteLinks) {
+		return delete(entity, deleteLinks ? DeleteOptions.unlinkOnly() : DeleteOptions.rejectIfLinked());
+	}
+
+	public <T extends Table> CompletableFuture<T> delete(T entity, DeleteOptions options) {
+		return switch (Objects.requireNonNull(options, "options").mode()) {
+			case REJECT_IF_LINKED -> delete(entity, false, false);
+			case UNLINK_ONLY -> delete(entity, true, false);
+			case CASCADE -> delete(entity, true, true, options.includedTypes());
+		};
+	}
+
+	private <T extends Table> CompletableFuture<T> delete(T entity, boolean deleteLinks, boolean cascade) {
+		return delete(entity, deleteLinks, cascade, Set.of());
+	}
+
+	private <T extends Table> CompletableFuture<T> delete(T entity, boolean deleteLinks, boolean cascade, Set<Class<? extends Table>> includedTypes) {
 		if (!deleteLinks) {
 			if (!TableAccess.getTableLinks(entity).isEmpty()) {
 				throw new RuntimeException("deleting would leave dangling links");
 			}
+		}
+		if (cascade) {
+			return deleteCascade(entity, includedTypes);
 		}
 		return putAllow
 			.apply(entity)
@@ -241,6 +261,99 @@ public class Database {
 				return driver.delete(organisationId, entity);
 			});
 	}
+
+	private <T extends Table> CompletableFuture<T> deleteCascade(T entity, Set<Class<? extends Table>> includedTypes) {
+		return reload(entity)
+			.thenApply(current -> current == null ? entity : current)
+			.thenCompose(current -> collectCascadeDeletes(current, includedTypes, new HashSet<>(), new ArrayList<>()))
+			.thenCompose(order -> validateDeletePermissions(order).thenApply(__ -> order))
+			.thenCompose(this::executeCascadeDeletes)
+			.thenApply(__ -> entity);
+	}
+
+	private CompletableFuture<List<Table>> executeCascadeDeletes(List<Table> order) {
+		CompletableFuture<?> future = CompletableFuture.completedFuture(null);
+		for (var item : order) {
+			future = future
+				.thenCompose(
+					__ -> reload(item)
+						.thenCompose(current -> {
+							if (current == null) {
+								return CompletableFuture.completedFuture(null);
+							}
+							return delete(current, true, false).thenApply(ignored -> null);
+						})
+				);
+		}
+		return future.thenApply(__ -> order);
+	}
+
+	private CompletableFuture<Void> validateDeletePermissions(List<Table> order) {
+		return TableCoreUtil
+			.all(
+				order
+					.stream()
+					.map(item -> putAllow.apply(item).thenApply(allow -> {
+						if (!allow) {
+							throw new ForbiddenWriteException(
+								"Delete not allowed for " + TableCoreUtil.table(item.getClass()) + " with id " + item.getId()
+							);
+						}
+						return item;
+					})
+					)
+					.collect(Collectors.toList())
+			)
+			.thenApply(__ -> null);
+	}
+
+	private CompletableFuture<List<Table>> collectCascadeDeletes(
+		Table entity,
+		Set<Class<? extends Table>> includedTypes,
+		Set<CascadeDeleteRef> visited,
+		List<Table> order
+	) {
+		var ref = new CascadeDeleteRef(TableCoreUtil.table(entity.getClass()), entity.getId());
+		if (!visited.add(ref)) {
+			return CompletableFuture.completedFuture(order);
+		}
+
+		return driver
+			.getViaLinks(organisationId, entity, items)
+			.thenCompose(children -> {
+				CompletableFuture<?> future = CompletableFuture.completedFuture(null);
+				for (var child : children) {
+					if (child == null || !isIncluded(child, includedTypes)) {
+						continue;
+					}
+					future = future.thenCompose(__ -> collectCascadeDeletes(child, includedTypes, visited, order));
+				}
+				return future.thenApply(__ -> {
+					order.add(entity);
+					return order;
+				});
+			});
+	}
+
+	@SuppressWarnings("unchecked")
+	private Class<? extends Table> baseTableClass(Table entity) {
+		return TableCoreUtil.baseClass((Class<Table>) entity.getClass());
+	}
+
+	private boolean isIncluded(Table entity, Set<Class<? extends Table>> includedTypes) {
+		if (includedTypes.isEmpty()) {
+			return true;
+		}
+		var table = TableCoreUtil.table(baseTableClass(entity));
+		return includedTypes.stream().anyMatch(type -> TableCoreUtil.table(type).equals(table));
+	}
+
+	@SuppressWarnings("unchecked")
+	private <T extends Table> CompletableFuture<T> reload(T entity) {
+		return get((Class<T>) entity.getClass(), entity.getId());
+	}
+
+	private record CascadeDeleteRef(String table, String id) {}
 
 	public <T extends Table> CompletableFuture<List<T>> getLinks(final Table entry, Class<T> target) {
 		return driver

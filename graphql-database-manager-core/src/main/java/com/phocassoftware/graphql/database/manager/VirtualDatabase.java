@@ -37,6 +37,10 @@ public class VirtualDatabase {
 		return database.delete(entity, deleteLinks).join();
 	}
 
+	public <T extends Table> T delete(T entity, DeleteOptions options) {
+		return database.delete(entity, options).join();
+	}
+
 	public <T extends Table> List<T> getLinks(final Table entry, Class<T> target) {
 		return database.getLinks(entry, target).join();
 	}

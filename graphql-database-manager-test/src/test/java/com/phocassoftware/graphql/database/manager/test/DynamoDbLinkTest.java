@@ -13,10 +13,12 @@
 package com.phocassoftware.graphql.database.manager.test;
 
 import com.phocassoftware.graphql.database.manager.Database;
+import com.phocassoftware.graphql.database.manager.DeleteOptions;
 import com.phocassoftware.graphql.database.manager.Table;
 import com.phocassoftware.graphql.database.manager.test.annotations.DatabaseNames;
 import com.phocassoftware.graphql.database.manager.test.annotations.DatabaseOrganisation;
 import java.util.Comparator;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Assertions;
 
@@ -117,6 +119,44 @@ final class DynamoDbLinkTest {
 
 		var list = db.getLinks(john, SimpleTable.class).get();
 		Assertions.assertEquals(0, list.size());
+		Assertions.assertNotNull(db.get(AnotherTable.class, john.getId()).get());
+	}
+
+	@TestDatabase
+	void testCascadeDelete(final Database db) throws InterruptedException, ExecutionException {
+		var garry = db.put(new CascadeRootTable("garry")).get();
+		var john = db.put(new CascadeChildTable("john")).get();
+		var jane = db.put(new CascadeLeafTable("jane")).get();
+
+		garry = db.link(garry, john.getClass(), john.getId()).get();
+		john = db.get(CascadeChildTable.class, john.getId()).get();
+		john = db.link(john, jane.getClass(), jane.getId()).get();
+
+		db.delete(garry, DeleteOptions.cascade()).get();
+
+		Assertions.assertNull(db.get(CascadeRootTable.class, garry.getId()).get());
+		Assertions.assertNull(db.get(CascadeChildTable.class, john.getId()).get());
+		Assertions.assertNull(db.get(CascadeLeafTable.class, jane.getId()).get());
+	}
+
+	@TestDatabase
+	void testCascadeDeleteWithIncludedType(final Database db) throws InterruptedException, ExecutionException {
+		var garry = db.put(new CascadeRootTable("garry")).get();
+		var john = db.put(new CascadeChildTable("john")).get();
+		var jane = db.put(new CascadeLeafTable("jane")).get();
+
+		garry = db.link(garry, john.getClass(), john.getId()).get();
+		john = db.get(CascadeChildTable.class, john.getId()).get();
+		john = db.link(john, jane.getClass(), jane.getId()).get();
+
+		db.delete(garry, DeleteOptions.cascade(Set.of(CascadeChildTable.class))).get();
+
+		Assertions.assertNull(db.get(CascadeRootTable.class, garry.getId()).get());
+		Assertions.assertNull(db.get(CascadeChildTable.class, john.getId()).get());
+
+		jane = db.get(CascadeLeafTable.class, jane.getId()).get();
+		Assertions.assertNotNull(jane);
+		Assertions.assertTrue(db.getLinks(jane, CascadeChildTable.class).get().isEmpty());
 	}
 
 	@TestDatabase
@@ -194,6 +234,21 @@ final class DynamoDbLinkTest {
 		public AnotherTable() {}
 
 		public AnotherTable(String name) {
+			this.name = name;
+		}
+
+		public String getName() {
+			return name;
+		}
+	}
+
+	static class ThirdTable extends Table {
+
+		private String name;
+
+		public ThirdTable() {}
+
+		public ThirdTable(String name) {
 			this.name = name;
 		}
 

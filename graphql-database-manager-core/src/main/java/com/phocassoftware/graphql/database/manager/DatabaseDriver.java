@@ -40,6 +40,10 @@ public abstract class DatabaseDriver {
 		TableDataLoader<DatabaseKey<Table>> items
 	);
 
+	public CompletableFuture<List<Table>> getViaLinks(String organisationId, Table entry, TableDataLoader<DatabaseKey<Table>> items) {
+		throw new UnsupportedOperationException("This database driver does not support loading linked entities without an explicit type");
+	}
+
 	public abstract <T extends Table> CompletableFuture<List<T>> query(DatabaseQueryKey<T> key);
 
 	public abstract CompletableFuture<Void> restoreBackup(List<BackupItem> entities);
