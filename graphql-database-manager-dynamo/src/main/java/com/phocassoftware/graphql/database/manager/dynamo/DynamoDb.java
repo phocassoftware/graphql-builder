@@ -1430,17 +1430,12 @@ public class DynamoDb extends DatabaseDriver {
 		}
 
 		var organisationIdAttribute = AttributeValue.builder().s(organisationId).build();
-		var id = AttributeValue.builder().s(table(entity.getClass()) + ":" + entity.getId()).build();
-		// we first clear out our own object
+		Map<String, AttributeValue> sourceKey = mapWithKeys(organisationId, entity);
 
 		long revision = entity.getRevision();
 		Map<String, AttributeValue> values = new HashMap<>();
 		values.put(":val", AttributeValue.builder().m(new HashMap<>()).build());
 		values.put(":revisionIncrement", REVISION_INCREMENT);
-
-		Map<String, AttributeValue> sourceKey = new HashMap<>();
-		sourceKey.put("organisationId", organisationIdAttribute);
-		sourceKey.put("id", id);
 
 		var clearEntity = client
 			.updateItem(
@@ -1489,10 +1484,15 @@ public class DynamoDb extends DatabaseDriver {
 				.stream()
 				.flatMap(s -> s.getValue().stream().map(v -> Map.entry(s.getKey(), v)))
 				.map(link -> {
-					var targetIdAttribute = AttributeValue.builder().s(link.getKey() + ":" + link.getValue()).build();
-					Map<String, AttributeValue> targetKey = new HashMap<>();
-					targetKey.put("organisationId", organisationIdAttribute);
-					targetKey.put("id", targetIdAttribute);
+					var linkedClass = classes.get(link.getKey());
+					Map<String, AttributeValue> targetKey;
+					if (linkedClass != null) {
+						targetKey = mapWithKeys(organisationId, linkedClass, link.getValue());
+					} else {
+						targetKey = new HashMap<>();
+						targetKey.put("organisationId", organisationIdAttribute);
+						targetKey.put("id", AttributeValue.builder().s(link.getKey() + ":" + link.getValue()).build());
+					}
 
 					Map<String, AttributeValue> v = new HashMap<>();
 					v.put(":val", val);

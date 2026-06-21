@@ -15,7 +15,6 @@ package com.phocassoftware.graphql.database.manager.test.hashed;
 import com.phocassoftware.graphql.database.manager.Database;
 import com.phocassoftware.graphql.database.manager.Table;
 import com.phocassoftware.graphql.database.manager.annotations.Hash;
-import com.phocassoftware.graphql.database.manager.test.TestDatabase;
 import com.phocassoftware.graphql.database.manager.test.annotations.DatabaseNames;
 import com.phocassoftware.graphql.database.manager.test.annotations.DatabaseOrganisation;
 import org.junit.jupiter.api.Assertions;
@@ -116,6 +115,23 @@ final class DynamoDbLinkTest {
 	}
 
 	@TestDatabase
+	void testDeleteLinksRemovesHashedBackReference(final Database db) throws InterruptedException, ExecutionException {
+		var garry = db.put(new SimpleTable("garry")).get();
+		var john = db.put(new AnotherTable("john")).get();
+
+		garry = db.link(garry, john.getClass(), john.getId()).get();
+
+		john = db.get(AnotherTable.class, john.getId()).get();
+		Assertions.assertEquals(1, db.getLinks(john, SimpleTable.class).get().size());
+
+		db.deleteLinks(garry).get();
+
+		john = db.get(AnotherTable.class, john.getId()).get();
+		var list = db.getLinks(john, SimpleTable.class).get();
+		Assertions.assertEquals(0, list.size());
+	}
+
+	@TestDatabase
 	void unlink(final Database db) throws InterruptedException, ExecutionException {
 		var garry = db.put(new SimpleTable("garry")).get();
 		var bob = db.put(new AnotherTable("bob")).get();
@@ -138,7 +154,7 @@ final class DynamoDbLinkTest {
 	}
 
 	@Hash(SimplerHasher.class)
-	static class SimpleTable extends Table {
+	public static class SimpleTable extends Table {
 
 		private String name;
 
@@ -154,7 +170,7 @@ final class DynamoDbLinkTest {
 	}
 
 	@Hash(SimplerHasher.class)
-	static class AnotherTable extends Table {
+	public static class AnotherTable extends Table {
 
 		private String name;
 
