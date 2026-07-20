@@ -26,7 +26,10 @@ import tools.jackson.databind.node.POJONode;
 import com.phocassoftware.graphql.database.manager.Table;
 import com.phocassoftware.graphql.database.manager.annotations.GlobalIndex;
 import com.phocassoftware.graphql.database.manager.annotations.SecondaryIndex;
+import com.phocassoftware.graphql.database.manager.annotations.TimeToLive;
 import com.phocassoftware.graphql.database.manager.util.BackupItem;
+import java.lang.reflect.Field;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,6 +47,37 @@ import software.amazon.awssdk.core.util.DefaultSdkAutoConstructMap;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 public class TableUtil {
+
+	static Instant getTimeToLive(Table entity) {
+		Field timeToLiveField = null;
+		Class<?> type = entity.getClass();
+
+		while (type != null) {
+			for (var field : type.getDeclaredFields()) {
+				if (field.isAnnotationPresent(TimeToLive.class)) {
+					if (timeToLiveField != null) {
+						throw new IllegalArgumentException("Only one field can be annotated with @TimeToLive");
+					}
+					timeToLiveField = field;
+				}
+			}
+			type = type.getSuperclass();
+		}
+
+		if (timeToLiveField == null) {
+			return null;
+		}
+		if (!timeToLiveField.getType().equals(Instant.class)) {
+			throw new IllegalArgumentException("@TimeToLive can only be used on an Instant field");
+		}
+
+		try {
+			timeToLiveField.trySetAccessible();
+			return (Instant) timeToLiveField.get(entity);
+		} catch (IllegalAccessException e) {
+			throw new RuntimeException("Unable to read @TimeToLive field", e);
+		}
+	}
 
 	static String getSecondaryGlobal(Table entity) {
 		for (var method : entity.getClass().getMethods()) {

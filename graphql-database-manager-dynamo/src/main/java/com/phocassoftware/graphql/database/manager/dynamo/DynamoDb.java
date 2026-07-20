@@ -428,6 +428,11 @@ public class DynamoDb extends DatabaseDriver {
 			var index = AttributeValue.builder().s(table(entity.getClass()) + ":" + secondaryOrganisation).build();
 			item.put("secondaryOrganisation", index);
 		}
+
+		var timeToLive = TableUtil.getTimeToLive(entity);
+		if (timeToLive != null) {
+			item.put("ttl", AttributeValue.builder().n(Long.toString(timeToLive.getEpochSecond())).build());
+		}
 		return item;
 	}
 
