@@ -232,6 +232,11 @@ public class SchemaBuilder {
 
 			for (var r : restrict) {
 				Restrict annotation = EntityUtil.getAnnotation(r, Restrict.class);
+				if (annotation == null) {
+					// Class carries repeatable @Restrict via the @Restricts container: classgraph reports it
+					// under Restrict, but the direct annotation is absent. Handled by the container loop below.
+					continue;
+				}
 				var factoryClass = annotation.value();
 				var factory = factoryClass.getConstructor().newInstance();
 				if (!factory.extractType().isAssignableFrom(r)) {
