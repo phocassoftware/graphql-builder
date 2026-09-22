@@ -18,6 +18,7 @@ import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;
 import com.phocassoftware.graphql.database.manager.test.annotations.DatabaseNames;
 import com.phocassoftware.graphql.database.manager.test.annotations.DatabaseOrganisation;
 import com.phocassoftware.graphql.database.manager.test.annotations.GlobalEnabled;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Assertions;
 
@@ -40,6 +41,59 @@ final class DynamoDbPutGetDeleteTest {
 		db.delete(entry1, false).get();
 		entry1 = db.get(SimpleTable.class, id).get();
 		Assertions.assertNull(entry1);
+	}
+
+	@TestDatabase
+	void testListPutGetDelete(final Database db) throws InterruptedException, ExecutionException {
+		var entries = List.of(new SimpleTable("garry"), new SimpleTable("bob"));
+
+		var putEntries = db.put(entries).get();
+
+		Assertions.assertEquals(List.of("garry", "bob"), putEntries.stream().map(SimpleTable::getName).toList());
+		Assertions.assertTrue(putEntries.stream().allMatch(entry -> entry.getId() != null));
+		Assertions.assertEquals(putEntries, db.get(SimpleTable.class, putEntries.stream().map(Table::getId).toList()).get());
+
+		var deletedEntries = db.delete(putEntries, false).get();
+
+		Assertions.assertEquals(putEntries, deletedEntries);
+		Assertions.assertTrue(db.get(SimpleTable.class, putEntries.stream().map(Table::getId).toList()).get().stream().allMatch(item -> item == null));
+	}
+
+	@TestDatabase
+	void testEmptyListPutDelete(final Database db) throws InterruptedException, ExecutionException {
+		Assertions.assertEquals(List.of(), db.put(List.<SimpleTable>of(), false).get());
+		Assertions.assertEquals(List.of(), db.delete(List.<SimpleTable>of(), false).get());
+	}
+
+	@TestDatabase
+	void testListDeleteMutuallyLinkedEntities(final Database db) throws InterruptedException, ExecutionException {
+		var first = db.put(new SimpleTable("garry")).get();
+		var second = db.put(new SimpleTable2("bob")).get();
+		db.link(first, second.getClass(), second.getId()).get();
+
+		first = db.get(SimpleTable.class, first.getId()).get();
+		second = db.get(SimpleTable2.class, second.getId()).get();
+
+		db.delete(List.<Table>of(first, second), true).get();
+
+		Assertions.assertNull(db.get(SimpleTable.class, first.getId()).get());
+		Assertions.assertNull(db.get(SimpleTable2.class, second.getId()).get());
+	}
+
+	@TestDatabase
+	void testListDeleteValidatesAllLinksBeforeDeleting(final Database db) throws InterruptedException, ExecutionException {
+		var unlinked = db.put(new SimpleTable("garry")).get();
+		var linked = db.put(new SimpleTable("bob")).get();
+		var target = db.put(new SimpleTable2("john")).get();
+		db.link(linked, target.getClass(), target.getId()).get();
+		var linkedEntry = db.get(SimpleTable.class, linked.getId()).get();
+
+		var delete = Assertions.assertDoesNotThrow(() -> db.delete(List.of(unlinked, linkedEntry), false));
+		Assertions.assertThrows(ExecutionException.class, delete::get);
+
+		Assertions.assertNotNull(db.get(SimpleTable.class, unlinked.getId()).get());
+		Assertions.assertNotNull(db.get(SimpleTable.class, linked.getId()).get());
+		Assertions.assertNotNull(db.get(SimpleTable2.class, target.getId()).get());
 	}
 
 	@TestDatabase
