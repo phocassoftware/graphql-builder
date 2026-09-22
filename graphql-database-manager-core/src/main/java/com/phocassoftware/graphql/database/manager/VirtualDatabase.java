@@ -37,6 +37,10 @@ public class VirtualDatabase {
 		return database.delete(entity, deleteLinks).join();
 	}
 
+	public <T extends Table> List<T> delete(List<T> entities, boolean deleteLinks) {
+		return database.delete(entities, deleteLinks).join();
+	}
+
 	public <T extends Table> List<T> getLinks(final Table entry, Class<T> target) {
 		return database.getLinks(entry, target).join();
 	}
@@ -89,8 +93,16 @@ public class VirtualDatabase {
 		return database.put(entity).join();
 	}
 
+	public <T extends Table> List<T> put(List<T> entities) {
+		return database.put(entities).join();
+	}
+
 	public <T extends Table> T put(T entity, boolean check) {
 		return database.put(entity, check).join();
+	}
+
+	public <T extends Table> List<T> put(List<T> entities, boolean check) {
+		return database.put(entities, check).join();
 	}
 
 	public <T extends Table> T putGlobal(T entity) {

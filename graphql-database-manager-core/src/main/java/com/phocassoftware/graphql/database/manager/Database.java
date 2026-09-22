@@ -242,6 +242,10 @@ public class Database {
 			});
 	}
 
+	public <T extends Table> CompletableFuture<List<T>> delete(List<T> entities, boolean deleteLinks) {
+		return TableCoreUtil.all(entities.stream().map(entity -> delete(entity, deleteLinks)).collect(Collectors.toList()));
+	}
+
 	public <T extends Table> CompletableFuture<List<T>> getLinks(final Table entry, Class<T> target) {
 		return driver
 			.getViaLinks(organisationId, entry, target, items)
@@ -292,6 +296,18 @@ public class Database {
 	}
 
 	/**
+	 * Will only pass if every entity revision matches what is currently in the database
+	 *
+	 * @param <T>      database entity type to update
+	 * @param entities revisions must match database or request will fail
+	 * @return updated entities with their revisions incremented by one. The CompletableFuture will fail with a RevisionMismatchException if any revision
+	 *         does not match
+	 */
+	public <T extends Table> CompletableFuture<List<T>> put(List<T> entities) {
+		return put(entities, true);
+	}
+
+	/**
 	 * @param <T>    database entity type to update
 	 * @param entity revision must match database or request will fail
 	 * @param check  Will only pass if the entity revision matches what is currently in the database
@@ -310,6 +326,17 @@ public class Database {
 
 				return put.put(organisationId, entity, check);
 			});
+	}
+
+	/**
+	 * @param <T>      database entity type to update
+	 * @param entities revisions must match database or request will fail
+	 * @param check    Will only pass if each entity revision matches what is currently in the database
+	 * @return updated entities with their revisions incremented by one. The CompletableFuture will fail with a RevisionMismatchException if any revision
+	 *         does not match
+	 */
+	public <T extends Table> CompletableFuture<List<T>> put(List<T> entities, boolean check) {
+		return TableCoreUtil.all(entities.stream().map(entity -> put(entity, check)).collect(Collectors.toList()));
 	}
 
 	public <T extends Table> CompletableFuture<T> putGlobal(T entity) {

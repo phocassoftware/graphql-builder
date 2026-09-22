@@ -22,6 +22,16 @@ import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Assertions;
 
 public class VirtualDatabaseTest {
+	@TestDatabase
+	public void testListPutDelete(VirtualDatabase database) {
+		var entries = database.put(List.of(new Simple(), new Simple()));
+
+		Assertions.assertEquals(2, entries.size());
+		Assertions.assertTrue(entries.stream().allMatch(entry -> entry.getId() != null));
+		Assertions.assertEquals(entries, database.delete(entries, false));
+		Assertions.assertEquals(List.of(), database.put(List.<Simple>of(), false));
+		Assertions.assertEquals(List.of(), database.delete(List.<Simple>of(), false));
+	}
 
 	@TestDatabase
 	public void testConcurrency(VirtualDatabase database) throws InterruptedException, ExecutionException {

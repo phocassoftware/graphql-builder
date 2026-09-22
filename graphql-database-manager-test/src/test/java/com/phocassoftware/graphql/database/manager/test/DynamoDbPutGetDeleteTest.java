@@ -18,6 +18,7 @@ import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;
 import com.phocassoftware.graphql.database.manager.test.annotations.DatabaseNames;
 import com.phocassoftware.graphql.database.manager.test.annotations.DatabaseOrganisation;
 import com.phocassoftware.graphql.database.manager.test.annotations.GlobalEnabled;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Assertions;
 
@@ -40,6 +41,28 @@ final class DynamoDbPutGetDeleteTest {
 		db.delete(entry1, false).get();
 		entry1 = db.get(SimpleTable.class, id).get();
 		Assertions.assertNull(entry1);
+	}
+
+	@TestDatabase
+	void testListPutGetDelete(final Database db) throws InterruptedException, ExecutionException {
+		var entries = List.of(new SimpleTable("garry"), new SimpleTable("bob"));
+
+		var putEntries = db.put(entries).get();
+
+		Assertions.assertEquals(List.of("garry", "bob"), putEntries.stream().map(SimpleTable::getName).toList());
+		Assertions.assertTrue(putEntries.stream().allMatch(entry -> entry.getId() != null));
+		Assertions.assertEquals(putEntries, db.get(SimpleTable.class, putEntries.stream().map(Table::getId).toList()).get());
+
+		var deletedEntries = db.delete(putEntries, false).get();
+
+		Assertions.assertEquals(putEntries, deletedEntries);
+		Assertions.assertTrue(db.get(SimpleTable.class, putEntries.stream().map(Table::getId).toList()).get().stream().allMatch(item -> item == null));
+	}
+
+	@TestDatabase
+	void testEmptyListPutDelete(final Database db) throws InterruptedException, ExecutionException {
+		Assertions.assertEquals(List.of(), db.put(List.<SimpleTable>of(), false).get());
+		Assertions.assertEquals(List.of(), db.delete(List.<SimpleTable>of(), false).get());
 	}
 
 	@TestDatabase
