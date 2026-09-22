@@ -1430,6 +1430,16 @@ public class DynamoDb extends DatabaseDriver {
 	}
 
 	public <T extends Table> CompletableFuture<T> deleteLinks(String organisationId, T entity) {
+		return deleteLinks(organisationId, entity, Collections.emptySet());
+	}
+
+	@Override
+	public <T extends Table> CompletableFuture<List<T>> deleteLinks(String organisationId, List<T> entities) {
+		var deletedEntities = entities.stream().map(entity -> Map.entry(table(entity.getClass()), entity.getId())).collect(Collectors.toSet());
+		return CompletableFutureUtil.sequence(entities.stream().map(entity -> deleteLinks(organisationId, entity, deletedEntities)));
+	}
+
+	private <T extends Table> CompletableFuture<T> deleteLinks(String organisationId, T entity, Set<Map.Entry<String, String>> deletedEntities) {
 		if (getLinks(entity).isEmpty()) {
 			return CompletableFuture.completedFuture(entity);
 		}
@@ -1488,6 +1498,7 @@ public class DynamoDb extends DatabaseDriver {
 				.entrySet()
 				.stream()
 				.flatMap(s -> s.getValue().stream().map(v -> Map.entry(s.getKey(), v)))
+				.filter(link -> !deletedEntities.contains(link))
 				.map(link -> {
 					var linkedClass = classes.get(link.getKey());
 					Map<String, AttributeValue> targetKey;

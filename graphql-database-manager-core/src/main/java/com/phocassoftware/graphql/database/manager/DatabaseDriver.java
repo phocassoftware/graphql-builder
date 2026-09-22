@@ -13,6 +13,7 @@
 package com.phocassoftware.graphql.database.manager;
 
 import com.phocassoftware.graphql.database.manager.util.BackupItem;
+import com.phocassoftware.graphql.database.manager.util.CompletableFutureUtil;
 import com.phocassoftware.graphql.database.manager.util.HistoryBackupItem;
 import java.time.Instant;
 import java.util.Collection;
@@ -28,6 +29,10 @@ public abstract class DatabaseDriver {
 	public abstract <T extends Table> CompletableFuture<List<T>> delete(String organisationId, Class<T> clazz);
 
 	public abstract <T extends Table> CompletableFuture<T> deleteLinks(String organisationId, T entity);
+
+	public <T extends Table> CompletableFuture<List<T>> deleteLinks(String organisationId, List<T> entities) {
+		return CompletableFutureUtil.sequence(entities.stream().map(entity -> deleteLinks(organisationId, entity)));
+	}
 
 	public abstract CompletableFuture<Void> bulkPut(List<PutValue> values);
 

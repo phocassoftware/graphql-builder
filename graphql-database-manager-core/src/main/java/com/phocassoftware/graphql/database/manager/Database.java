@@ -243,7 +243,49 @@ public class Database {
 	}
 
 	public <T extends Table> CompletableFuture<List<T>> delete(List<T> entities, boolean deleteLinks) {
-		return TableCoreUtil.all(entities.stream().map(entity -> delete(entity, deleteLinks)).collect(Collectors.toList()));
+		if (!deleteLinks && entities.stream().anyMatch(entity -> !TableAccess.getTableLinks(entity).isEmpty())) {
+			return CompletableFuture.failedFuture(new RuntimeException("deleting would leave dangling links"));
+		}
+
+		return validateDeleteAllowed(entities)
+			.thenCompose(allowedEntities -> {
+				queries.clearAll();
+				if (deleteLinks) {
+					items.clearAll();
+					return driver.deleteLinks(organisationId, allowedEntities).thenCompose(this::deleteEntities);
+				}
+
+				allowedEntities.forEach(entity -> {
+					var key = (DatabaseKey<Table>) KeyFactory.createDatabaseKey(organisationId, entity.getClass(), entity.getId());
+					items.clear(key);
+				});
+				return deleteEntities(allowedEntities);
+			});
+	}
+
+	private <T extends Table> CompletableFuture<List<T>> validateDeleteAllowed(List<T> entities) {
+		return TableCoreUtil
+			.all(
+				entities
+					.stream()
+					.map(
+						entity -> putAllow
+							.apply(entity)
+							.thenApply(allow -> {
+								if (!allow) {
+									throw new ForbiddenWriteException(
+										"Delete not allowed for " + TableCoreUtil.table(entity.getClass()) + " with id " + entity.getId()
+									);
+								}
+								return entity;
+							})
+					)
+					.collect(Collectors.toList())
+			);
+	}
+
+	private <T extends Table> CompletableFuture<List<T>> deleteEntities(List<T> entities) {
+		return TableCoreUtil.all(entities.stream().map(entity -> driver.delete(organisationId, entity)).collect(Collectors.toList()));
 	}
 
 	public <T extends Table> CompletableFuture<List<T>> getLinks(final Table entry, Class<T> target) {
@@ -330,10 +372,10 @@ public class Database {
 
 	/**
 	 * @param <T>      database entity type to update
-	 * @param entities revisions must match database or request will fail
-	 * @param check    Will only pass if each entity revision matches what is currently in the database
-	 * @return updated entities with their revisions incremented by one. The CompletableFuture will fail with a RevisionMismatchException if any revision
-	 *         does not match
+	 * @param entities revisions must match the database when check is true
+	 * @param check    when true, only passes if each entity revision matches what is currently in the database; false bypasses optimistic-lock validation
+	 * @return updated entities with their revisions incremented by one. When check is true, the CompletableFuture will fail with a
+	 *         RevisionMismatchException if any revision does not match
 	 */
 	public <T extends Table> CompletableFuture<List<T>> put(List<T> entities, boolean check) {
 		return TableCoreUtil.all(entities.stream().map(entity -> put(entity, check)).collect(Collectors.toList()));

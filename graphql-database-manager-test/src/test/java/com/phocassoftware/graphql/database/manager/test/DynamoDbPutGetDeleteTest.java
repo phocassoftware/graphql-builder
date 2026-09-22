@@ -66,6 +66,37 @@ final class DynamoDbPutGetDeleteTest {
 	}
 
 	@TestDatabase
+	void testListDeleteMutuallyLinkedEntities(final Database db) throws InterruptedException, ExecutionException {
+		var first = db.put(new SimpleTable("garry")).get();
+		var second = db.put(new SimpleTable2("bob")).get();
+		db.link(first, second.getClass(), second.getId()).get();
+
+		first = db.get(SimpleTable.class, first.getId()).get();
+		second = db.get(SimpleTable2.class, second.getId()).get();
+
+		db.delete(List.<Table>of(first, second), true).get();
+
+		Assertions.assertNull(db.get(SimpleTable.class, first.getId()).get());
+		Assertions.assertNull(db.get(SimpleTable2.class, second.getId()).get());
+	}
+
+	@TestDatabase
+	void testListDeleteValidatesAllLinksBeforeDeleting(final Database db) throws InterruptedException, ExecutionException {
+		var unlinked = db.put(new SimpleTable("garry")).get();
+		var linked = db.put(new SimpleTable("bob")).get();
+		var target = db.put(new SimpleTable2("john")).get();
+		db.link(linked, target.getClass(), target.getId()).get();
+		var linkedEntry = db.get(SimpleTable.class, linked.getId()).get();
+
+		var delete = Assertions.assertDoesNotThrow(() -> db.delete(List.of(unlinked, linkedEntry), false));
+		Assertions.assertThrows(ExecutionException.class, delete::get);
+
+		Assertions.assertNotNull(db.get(SimpleTable.class, unlinked.getId()).get());
+		Assertions.assertNotNull(db.get(SimpleTable.class, linked.getId()).get());
+		Assertions.assertNotNull(db.get(SimpleTable2.class, target.getId()).get());
+	}
+
+	@TestDatabase
 	void testGlobalPutGetDelete(@DatabaseNames({ "db" }) final Database db, @DatabaseNames({ "db" }) final Database dbProd) throws InterruptedException,
 		ExecutionException {
 		SimpleTable entry1 = new SimpleTable("garry");
