@@ -55,6 +55,11 @@ public final class FlattenerMulti extends Flattener {
 		}
 	}
 
+	DynamoItem getForScan(String organisationId, String id) {
+		var item = lookup.get(organisationId + ":" + id);
+		return item != null && item.isDeleted() ? null : item;
+	}
+
 	protected void addItem(DynamoItem item) {
 		lookup.merge(getId(item), item, this::merge);
 	}

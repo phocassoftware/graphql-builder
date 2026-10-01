@@ -38,6 +38,7 @@ import com.phocassoftware.graphql.database.manager.util.CompletableFutureUtil;
 import com.phocassoftware.graphql.database.manager.util.HistoryBackupItem;
 import com.phocassoftware.graphql.database.manager.util.HistoryCoreUtil;
 import com.phocassoftware.graphql.database.manager.util.TableCoreUtil;
+import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Lists;
@@ -109,6 +110,8 @@ public class DynamoDb extends DatabaseDriver {
 		History,
 	}
 
+	private record ScanCursor(int tableIndex, Map<String, AttributeValue> key) {}
+
 	private final Map<String, HashQueryBuilder> hashKeyExpander;
 	private final Map<String, Class<? extends Table>> classes;
 
@@ -172,6 +175,7 @@ public class DynamoDb extends DatabaseDriver {
 		String classPath,
 		String parallelHashIndex
 	) {
+		Preconditions.checkArgument(seedTables.isEmpty() || seedClient != null, "Seed client is required when seed tables are configured");
 		this.mapper = mapper;
 		this.entityTables = Stream.concat(seedTables.stream(), entityTables.stream()).toList();
 		this.seedTables = Set.copyOf(seedTables);
@@ -901,7 +905,8 @@ public class DynamoDb extends DatabaseDriver {
 			}
 		}
 
-		var s = new DynamoQuerySubscriber(table, query.getLimit());
+		var tableLimit = seedTables.isEmpty() ? query.getLimit() : null;
+		var s = new DynamoQuerySubscriber(table, tableLimit);
 		Boolean finalConsistentRead = consistentRead;
 		String finalIndex = index;
 		clientFor(table)
@@ -922,8 +927,8 @@ public class DynamoDb extends DatabaseDriver {
 
 						b.keyConditionExpression(conditionalExpression);
 
-						if (query.getLimit() != null) {
-							b.limit(query.getLimit());
+						if (tableLimit != null) {
+							b.limit(tableLimit);
 						}
 
 						if (query.getAfter() != null) {
@@ -1749,18 +1754,18 @@ public class DynamoDb extends DatabaseDriver {
 
 	@Override
 	protected ScanResult startTableScan(TableScanQuery tableScanQuery, int segment, Object from) {
-		return startTableScan(tableScanQuery, segment, from, entityTable);
-	}
-
-	private ScanResult startTableScan(TableScanQuery tableScanQuery, int segment, Object from, String table) {
-		var builder = ScanRequest.builder().tableName(table).totalSegments(tableScanQuery.parallelism()).segment(segment);
-
-		if (from != null) {
-			var startKey = TableUtil.toAttributes(mapper, from);
-			builder.exclusiveStartKey(startKey);
+		var scanTables = seedTables.isEmpty() ? List.of(entityTable) : entityTables;
+		var cursor = from == null ? new ScanCursor(0, Map.of()) : (ScanCursor) from;
+		var table = scanTables.get(cursor.tableIndex());
+		var builder = ScanRequest.builder().tableName(table).consistentRead(true).totalSegments(tableScanQuery.parallelism()).segment(segment);
+		if (!cursor.key().isEmpty()) {
+			builder.exclusiveStartKey(cursor.key());
 		}
 
-		var scan = client.scan(b -> b.tableName(entityTables.getLast()).totalSegments(tableScanQuery.parallelism()).segment(segment)).join();
+		var scan = clientFor(table).scan(builder.build()).join();
+		var byTable = seedTables.isEmpty() ? null : scanItemsByTable(table, scan.items());
+		var flattener = byTable == null ? null : scanFlattener(byTable);
+		var earlierKeys = byTable == null ? Set.<Map.Entry<String, String>>of() : earlierScanKeys(scanTables, cursor.tableIndex(), byTable);
 
 		var items = new ArrayList<ScanResult.Item<?>>();
 		for (var item : scan.items()) {
@@ -1769,6 +1774,9 @@ public class DynamoDb extends DatabaseDriver {
 			}
 			var id = item.get("id").s();
 			var organisationId = item.get("organisationId").s();
+			if (earlierKeys.contains(Map.entry(organisationId, id))) {
+				continue;
+			}
 			var innerItem = item.get("item").m();
 			if (innerItem == null || !innerItem.containsKey("id")) {
 				continue;
@@ -1787,7 +1795,12 @@ public class DynamoDb extends DatabaseDriver {
 			}
 			var type = this.classes.get(typeId);
 			if (type != null) {
-				var entity = new DynamoItem(table, item).convertTo(mapper, type);
+				var scannedItem = new DynamoItem(table, item);
+				var effectiveItem = flattener == null ? scannedItem : flattener.getForScan(scannedItem.getOrganisationId(), scannedItem.getId());
+				if (effectiveItem == null) {
+					continue;
+				}
+				var entity = effectiveItem.convertTo(mapper, type);
 
 				var orgIdFinal = organisationId;
 				items
@@ -1804,11 +1817,48 @@ public class DynamoDb extends DatabaseDriver {
 			}
 		}
 
-		Object next = null;
-		if (!scan.lastEvaluatedKey().isEmpty()) {
-			next = TableUtil.convertTo(mapper, scan.lastEvaluatedKey(), Object.class);
-		}
+		Object next = !scan.lastEvaluatedKey().isEmpty()
+			? new ScanCursor(cursor.tableIndex(), scan.lastEvaluatedKey())
+			: cursor.tableIndex() + 1 < scanTables.size() ? new ScanCursor(cursor.tableIndex() + 1, Map.of()) : null;
 
 		return new ScanResult(items, next);
+	}
+
+	private Map<String, List<DynamoItem>> scanItemsByTable(String table, List<Map<String, AttributeValue>> page) {
+		var keys = page
+			.stream()
+			.filter(item -> item.containsKey("organisationId") && item.containsKey("id"))
+			.map(item -> Map.of("organisationId", item.get("organisationId"), "id", item.get("id")))
+			.toList();
+		var result = new HashMap<String, List<DynamoItem>>();
+		result.put(table, page.stream().map(item -> new DynamoItem(table, item)).toList());
+		for (var otherTable : entityTables) {
+			if (otherTable.equals(table)) {
+				continue;
+			}
+			var found = new ArrayList<DynamoItem>();
+			for (var batch : Lists.partition(keys, 100)) {
+				found.addAll(getItems(0, otherTable, KeysAndAttributes.builder().keys(batch).consistentRead(true).build()).join());
+			}
+			result.put(otherTable, found);
+		}
+		return result;
+	}
+
+	private FlattenerMulti scanFlattener(Map<String, List<DynamoItem>> byTable) {
+		var flattener = new FlattenerMulti(entityTables, true);
+		entityTables.forEach(name -> flattener.addItems(byTable.get(name)));
+		return flattener;
+	}
+
+	private Set<Map.Entry<String, String>> earlierScanKeys(List<String> scanTables, int tableIndex, Map<String, List<DynamoItem>> byTable) {
+		if (tableIndex == 0) {
+			return Set.of();
+		}
+		var keys = new HashSet<Map.Entry<String, String>>();
+		for (int i = 0; i < tableIndex; i++) {
+			byTable.get(scanTables.get(i)).forEach(item -> keys.add(Map.entry(item.getItem().get("organisationId").s(), item.getItem().get("id").s())));
+		}
+		return keys;
 	}
 }
