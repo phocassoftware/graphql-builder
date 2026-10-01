@@ -90,6 +90,8 @@ public class DynamoDb extends DatabaseDriver {
 	private final String historyTable;
 	private final String entityTable;
 	private final DynamoDbAsyncClient client;
+	private final DynamoDbAsyncClient seedClient;
+	private final Set<String> seedTables;
 	private final ObjectMapper mapper;
 	private final Supplier<String> idGenerator;
 	private final int batchWriteSize;
@@ -138,8 +140,42 @@ public class DynamoDb extends DatabaseDriver {
 		String classPath,
 		String parallelHashIndex
 	) {
+		this(
+			mapper,
+			entityTables,
+			List.of(),
+			historyTable,
+			client,
+			null,
+			idGenerator,
+			batchWriteSize,
+			maxRetry,
+			globalEnabled,
+			hash,
+			classPath,
+			parallelHashIndex
+		);
+	}
+
+	public DynamoDb(
+		ObjectMapper mapper,
+		List<String> entityTables,
+		List<String> seedTables,
+		String historyTable,
+		DynamoDbAsyncClient client,
+		DynamoDbAsyncClient seedClient,
+		Supplier<String> idGenerator,
+		int batchWriteSize,
+		int maxRetry,
+		boolean globalEnabled,
+		boolean hash,
+		String classPath,
+		String parallelHashIndex
+	) {
 		this.mapper = mapper;
-		this.entityTables = entityTables;
+		this.entityTables = Stream.concat(seedTables.stream(), entityTables.stream()).toList();
+		this.seedTables = Set.copyOf(seedTables);
+		this.seedClient = seedClient;
 		this.historyTable = historyTable;
 		this.entityTable = entityTables.get(entityTables.size() - 1);
 		this.client = client;
@@ -186,6 +222,10 @@ public class DynamoDb extends DatabaseDriver {
 		}
 	}
 
+	private DynamoDbAsyncClient clientFor(String table) {
+		return seedTables.contains(table) ? seedClient : client;
+	}
+
 	public <T extends Table> CompletableFuture<List<T>> delete(String organisationId, Class<T> clazz) {
 		if (getExtractor(clazz).isPresent()) {
 			throw new UnsupportedOperationException("hashed types can not be deleted by type");
@@ -204,7 +244,7 @@ public class DynamoDb extends DatabaseDriver {
 		}
 
 		String sourceTable = getSourceTable(entity);
-		if (sourceTable.equals(entityTable)) {
+		if (sourceTable.equals(entityTable) && seedTables.isEmpty()) {
 			Map<String, AttributeValue> key = mapWithKeys(organisationId, entity);
 
 			return client
@@ -504,13 +544,14 @@ public class DynamoDb extends DatabaseDriver {
 			}
 		});
 
-		Map<String, KeysAndAttributes> items = new HashMap<>();
-
-		for (String table : this.entityTables) {
-			items.put(table, KeysAndAttributes.builder().keys(entries).consistentRead(true).build());
-		}
-		return getItems(0, items, Flattener.create(this.entityTables, false))
-			.thenApply(flattener -> {
+		var requests = entityTables
+			.stream()
+			.map(table -> getItems(0, table, KeysAndAttributes.builder().keys(entries).consistentRead(true).build()));
+		return CompletableFutureUtil
+			.sequence(requests)
+			.thenApply(results -> {
+				var flattener = Flattener.create(this.entityTables, false);
+				results.forEach(flattener::addItems);
 				var toReturn = new ArrayList<T>();
 				for (var key : keys) {
 					var item = flattener.get(getExtractor(key.getType()), key.getType(), key.getId());
@@ -524,32 +565,22 @@ public class DynamoDb extends DatabaseDriver {
 			});
 	}
 
-	private CompletableFuture<Flattener> getItems(int count, Map<String, KeysAndAttributes> items, Flattener flattener) {
+	private CompletableFuture<List<DynamoItem>> getItems(int count, String table, KeysAndAttributes items) {
 		if (count > maxRetry) {
 			throw new RuntimeException("Failed to get keys from dynamo after " + maxRetry + " attempts");
 		}
 		var delay = CompletableFuture.delayedExecutor(100 * count * count, TimeUnit.MILLISECONDS);
 		return CompletableFuture
-			.supplyAsync(
-				() -> {
-					return client
-						.batchGetItem(builder -> builder.requestItems(items))
-						.thenCompose(response -> {
-							var responseItems = response.responses();
-							entityTables.forEach(table -> {
-								flattener.add(table, responseItems.get(table));
-							});
-
-							if (!response.unprocessedKeys().isEmpty()) {
-								return getItems(count, response.unprocessedKeys(), flattener);
-							} else {
-								return CompletableFuture.completedFuture(flattener);
-							}
-						});
-				},
-				delay
-			)
-			.thenCompose(t -> t);
+			.supplyAsync(() -> clientFor(table).batchGetItem(builder -> builder.requestItems(Map.of(table, items))), delay)
+			.thenCompose(t -> t)
+			.thenCompose(response -> {
+				var result = response.responses().getOrDefault(table, List.of()).stream().map(item -> new DynamoItem(table, item)).toList();
+				var unprocessed = response.unprocessedKeys().get(table);
+				if (unprocessed == null) {
+					return CompletableFuture.completedFuture(result);
+				}
+				return getItems(count + 1, table, unprocessed).thenApply(rest -> Stream.concat(result.stream(), rest.stream()).toList());
+			});
 	}
 
 	@Override
@@ -765,7 +796,7 @@ public class DynamoDb extends DatabaseDriver {
 		keyConditions.put(":secondaryGlobal", id);
 
 		var toReturn = new ArrayList<DynamoItem>();
-		return client
+		return clientFor(table)
 			.queryPaginator(
 				r -> r
 					.tableName(table)
@@ -822,7 +853,7 @@ public class DynamoDb extends DatabaseDriver {
 		keyConditions.put(":secondaryOrganisation", id);
 
 		var toReturn = new ArrayList<String>();
-		return client
+		return clientFor(table)
 			.queryPaginator(
 				r -> r
 					.tableName(table)
@@ -873,7 +904,7 @@ public class DynamoDb extends DatabaseDriver {
 		var s = new DynamoQuerySubscriber(table, query.getLimit());
 		Boolean finalConsistentRead = consistentRead;
 		String finalIndex = index;
-		client
+		clientFor(table)
 			.queryPaginator(r -> {
 				r
 					.tableName(table)
@@ -1079,7 +1110,7 @@ public class DynamoDb extends DatabaseDriver {
 		keyConditions.put(":organisationId", organisationId);
 
 		var toReturn = Collections.synchronizedList(new ArrayList<BackupItem>());
-		var future = client
+		var future = clientFor(table)
 			.queryPaginator(
 				r -> r.tableName(table).consistentRead(true).keyConditionExpression("organisationId = :organisationId").expressionAttributeValues(keyConditions)
 			)
@@ -1097,10 +1128,10 @@ public class DynamoDb extends DatabaseDriver {
 									var typeName = TableCoreUtil.table(query.getType());
 
 									var key = organisationId.s() + ":" + typeName + ":" + query.getHashId();
-									var hashFuture = client
+									var hashFuture = clientFor(table)
 										.queryPaginator(
 											builder -> builder
-												.tableName(entityTable)
+												.tableName(table)
 												.keyConditionExpression("organisationId = :organisationId")
 												.expressionAttributeValues(Map.of(":organisationId", AttributeValue.builder().s(key).build()))
 										)

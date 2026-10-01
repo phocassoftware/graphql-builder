@@ -46,6 +46,8 @@ public final class DynamoDbManager extends DatabaseManager {
 	public static class DyanmoDbManagerBuilder {
 
 		private DynamoDbAsyncClient client;
+		private DynamoDbAsyncClient seedClient;
+		private List<String> seedTables = List.of();
 		private ObjectMapper mapper;
 		private List<String> tables;
 		private Supplier<String> idGenerator;
@@ -61,6 +63,13 @@ public final class DynamoDbManager extends DatabaseManager {
 
 		public DyanmoDbManagerBuilder dynamoDbAsyncClient(DynamoDbAsyncClient client) {
 			this.client = client;
+			return this;
+		}
+
+		/** Read these tables through the seed client before the writable tables. */
+		public DyanmoDbManagerBuilder seedTables(DynamoDbAsyncClient client, String... tables) {
+			this.seedClient = Preconditions.checkNotNull(client, "Seed client is null");
+			this.seedTables = List.of(tables);
 			return this;
 		}
 
@@ -133,6 +142,7 @@ public final class DynamoDbManager extends DatabaseManager {
 			Preconditions.checkNotNull(tables, "Tables must be set");
 			Preconditions.checkArgument(!tables.isEmpty(), "Empty table array");
 			Preconditions.checkNotNull(mapper, "Mapper is null");
+			Preconditions.checkArgument(seedTables.stream().noneMatch(tables::contains), "Seed and writable tables must have distinct names");
 
 			if (client == null) {
 				client = DynamoDbAsyncClient.create();
@@ -144,7 +154,21 @@ public final class DynamoDbManager extends DatabaseManager {
 			database = Objects
 				.requireNonNullElse(
 					database,
-					new DynamoDb(mapper, tables, historyTable, client, idGenerator, batchWriteSize, maxRetry, globalEnabled, hash, classPath, parallelIndex)
+					new DynamoDb(
+						mapper,
+						tables,
+						seedTables,
+						historyTable,
+						client,
+						seedClient,
+						idGenerator,
+						batchWriteSize,
+						maxRetry,
+						globalEnabled,
+						hash,
+						classPath,
+						parallelIndex
+					)
 				);
 
 			return new DynamoDbManager(mapper, idGenerator, client, database);

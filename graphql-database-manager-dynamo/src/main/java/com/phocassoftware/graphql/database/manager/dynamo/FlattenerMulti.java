@@ -87,6 +87,11 @@ public final class FlattenerMulti extends Flattener {
 	public <T extends Table> List<T> results(ObjectMapper mapper, Class<T> type, Optional<Integer> limit) {
 		var items = new ArrayList<DynamoItem>(lookup.values());
 		Collections.sort(items);
-		return items.stream().limit(limit.orElse(Integer.MAX_VALUE)).map(t -> t.convertTo(mapper, type)).collect(Collectors.toList());
+		return items
+			.stream()
+			.filter(item -> !item.isDeleted())
+			.limit(limit.orElse(Integer.MAX_VALUE))
+			.map(t -> t.convertTo(mapper, type))
+			.collect(Collectors.toList());
 	}
 }
