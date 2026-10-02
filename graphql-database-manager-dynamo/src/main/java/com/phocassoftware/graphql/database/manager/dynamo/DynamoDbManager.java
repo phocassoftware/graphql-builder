@@ -48,6 +48,7 @@ public final class DynamoDbManager extends DatabaseManager {
 		private DynamoDbAsyncClient client;
 		private ObjectMapper mapper;
 		private List<String> tables;
+		private List<DynamoDbTable> tableClients;
 		private Supplier<String> idGenerator;
 		private DatabaseDriver database;
 		private String historyTable;
@@ -77,6 +78,16 @@ public final class DynamoDbManager extends DatabaseManager {
 		public DyanmoDbManagerBuilder tables(String... tables) {
 			this.tables = Arrays.asList(tables);
 			return this;
+		}
+
+		/** Tables are ordered from seed to writable; the last client receives writes. */
+		public DyanmoDbManagerBuilder tableClients(List<DynamoDbTable> tableClients) {
+			this.tableClients = List.copyOf(tableClients);
+			return this;
+		}
+
+		public DyanmoDbManagerBuilder tableClients(DynamoDbTable... tableClients) {
+			return tableClients(Arrays.asList(tableClients));
 		}
 
 		public DyanmoDbManagerBuilder historyTable(String historyTable) {
@@ -130,12 +141,22 @@ public final class DynamoDbManager extends DatabaseManager {
 		}
 
 		public DynamoDbManager build() {
-			Preconditions.checkNotNull(tables, "Tables must be set");
-			Preconditions.checkArgument(!tables.isEmpty(), "Empty table array");
+			List<String> configuredTables = tables;
+			DynamoDbAsyncClient writableClient = client;
+			if (tableClients != null) {
+				Preconditions.checkArgument(configuredTables == null, "Set tables or tableClients, not both");
+				Preconditions.checkArgument(!tableClients.isEmpty(), "Empty table client array");
+				Preconditions.checkArgument(writableClient == null, "Set tableClients without dynamoDbAsyncClient");
+				configuredTables = tableClients.stream().map(DynamoDbTable::name).toList();
+				Preconditions.checkArgument(configuredTables.stream().distinct().count() == configuredTables.size(), "Table client names must be unique");
+				writableClient = tableClients.getLast().client();
+			}
+			Preconditions.checkNotNull(configuredTables, "Tables must be set");
+			Preconditions.checkArgument(!configuredTables.isEmpty(), "Empty table array");
 			Preconditions.checkNotNull(mapper, "Mapper is null");
 
-			if (client == null) {
-				client = DynamoDbAsyncClient.create();
+			if (writableClient == null) {
+				writableClient = client = DynamoDbAsyncClient.create();
 			}
 			if (idGenerator == null) {
 				idGenerator = () -> UUID.randomUUID().toString();
@@ -144,10 +165,24 @@ public final class DynamoDbManager extends DatabaseManager {
 			database = Objects
 				.requireNonNullElse(
 					database,
-					new DynamoDb(mapper, tables, historyTable, client, idGenerator, batchWriteSize, maxRetry, globalEnabled, hash, classPath, parallelIndex)
+					new DynamoDb(
+						mapper,
+						configuredTables,
+						historyTable,
+						writableClient,
+						idGenerator,
+						batchWriteSize,
+						maxRetry,
+						globalEnabled,
+						hash,
+						classPath,
+						parallelIndex,
+						tableClients == null ? Map.of()
+							: tableClients.stream().collect(java.util.stream.Collectors.toMap(DynamoDbTable::name, DynamoDbTable::client))
+					)
 				);
 
-			return new DynamoDbManager(mapper, idGenerator, client, database);
+			return new DynamoDbManager(mapper, idGenerator, writableClient, database);
 		}
 	}
 
