@@ -20,7 +20,6 @@ import com.google.common.base.Strings;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
@@ -162,10 +161,9 @@ public final class DynamoDbManager extends DatabaseManager {
 				idGenerator = () -> UUID.randomUUID().toString();
 			}
 
-			database = Objects
-				.requireNonNullElse(
-					database,
-					new DynamoDb(
+			if (database == null) {
+				database = tableClients == null
+					? new DynamoDb(
 						mapper,
 						configuredTables,
 						historyTable,
@@ -176,11 +174,10 @@ public final class DynamoDbManager extends DatabaseManager {
 						globalEnabled,
 						hash,
 						classPath,
-						parallelIndex,
-						tableClients == null ? Map.of()
-							: tableClients.stream().collect(java.util.stream.Collectors.toMap(DynamoDbTable::name, DynamoDbTable::client))
+						parallelIndex
 					)
-				);
+					: new DynamoDb(mapper, tableClients, historyTable, idGenerator, batchWriteSize, maxRetry, globalEnabled, hash, classPath, parallelIndex);
+			}
 
 			return new DynamoDbManager(mapper, idGenerator, writableClient, database);
 		}

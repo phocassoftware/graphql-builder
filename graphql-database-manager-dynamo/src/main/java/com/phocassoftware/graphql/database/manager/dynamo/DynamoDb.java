@@ -60,6 +60,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -90,7 +91,7 @@ public class DynamoDb extends DatabaseDriver {
 	private final String historyTable;
 	private final String entityTable;
 	private final DynamoDbAsyncClient client;
-	private final Map<String, DynamoDbAsyncClient> tableClients;
+	private final ClientRouting routing;
 	private final ObjectMapper mapper;
 	private final Supplier<String> idGenerator;
 	private final int batchWriteSize;
@@ -110,6 +111,17 @@ public class DynamoDb extends DatabaseDriver {
 
 	private final Map<String, HashQueryBuilder> hashKeyExpander;
 	private final Map<String, Class<? extends Table>> classes;
+
+	private record ClientRouting(List<String> tables, Function<String, DynamoDbAsyncClient> clientFor, boolean shared) {
+		static ClientRouting shared(List<String> tables, DynamoDbAsyncClient client) {
+			return new ClientRouting(tables, ignored -> client, true);
+		}
+
+		static ClientRouting perTable(List<DynamoDbTable> tables) {
+			var clients = Map.copyOf(tables.stream().collect(Collectors.toMap(DynamoDbTable::name, DynamoDbTable::client)));
+			return new ClientRouting(tables.stream().map(DynamoDbTable::name).toList(), clients::get, false);
+		}
+	}
 
 	public DynamoDb(ObjectMapper mapper, List<String> entityTables, List<String> historyTables, DynamoDbAsyncClient client, Supplier<String> idGenerator) {
 		this(mapper, entityTables, null, client, idGenerator, BATCH_WRITE_SIZE, MAX_RETRY, true, true, null, null);
@@ -139,29 +151,64 @@ public class DynamoDb extends DatabaseDriver {
 		String classPath,
 		String parallelHashIndex
 	) {
-		this(mapper, entityTables, historyTable, client, idGenerator, batchWriteSize, maxRetry, globalEnabled, hash, classPath, parallelHashIndex, Map.of());
+		this(
+			mapper,
+			ClientRouting.shared(entityTables, client),
+			historyTable,
+			idGenerator,
+			batchWriteSize,
+			maxRetry,
+			globalEnabled,
+			hash,
+			classPath,
+			parallelHashIndex
+		);
 	}
 
 	public DynamoDb(
 		ObjectMapper mapper,
-		List<String> entityTables,
+		List<DynamoDbTable> tableClients,
 		String historyTable,
-		DynamoDbAsyncClient client,
 		Supplier<String> idGenerator,
 		int batchWriteSize,
 		int maxRetry,
 		boolean globalEnabled,
 		boolean hash,
 		String classPath,
-		String parallelHashIndex,
-		Map<String, DynamoDbAsyncClient> tableClients
+		String parallelHashIndex
+	) {
+		this(
+			mapper,
+			ClientRouting.perTable(tableClients),
+			historyTable,
+			idGenerator,
+			batchWriteSize,
+			maxRetry,
+			globalEnabled,
+			hash,
+			classPath,
+			parallelHashIndex
+		);
+	}
+
+	private DynamoDb(
+		ObjectMapper mapper,
+		ClientRouting routing,
+		String historyTable,
+		Supplier<String> idGenerator,
+		int batchWriteSize,
+		int maxRetry,
+		boolean globalEnabled,
+		boolean hash,
+		String classPath,
+		String parallelHashIndex
 	) {
 		this.mapper = mapper;
-		this.tableClients = Map.copyOf(tableClients);
-		this.entityTables = entityTables;
+		this.routing = routing;
+		this.entityTables = routing.tables();
 		this.historyTable = historyTable;
-		this.entityTable = entityTables.get(entityTables.size() - 1);
-		this.client = client;
+		this.entityTable = entityTables.getLast();
+		this.client = clientFor(entityTable);
 		this.idGenerator = idGenerator;
 		this.batchWriteSize = batchWriteSize;
 		this.maxRetry = maxRetry;
@@ -529,7 +576,7 @@ public class DynamoDb extends DatabaseDriver {
 			items.put(table, KeysAndAttributes.builder().keys(entries).consistentRead(true).build());
 		}
 		CompletableFuture<Flattener> result;
-		if (tableClients.isEmpty()) {
+		if (routing.shared()) {
 			result = getItems(0, items, Flattener.create(this.entityTables, false));
 		} else {
 			result = CompletableFuture.completedFuture(Flattener.create(this.entityTables, false));
@@ -591,7 +638,7 @@ public class DynamoDb extends DatabaseDriver {
 	}
 
 	private DynamoDbAsyncClient clientFor(String table) {
-		return tableClients.getOrDefault(table, client);
+		return routing.clientFor().apply(table);
 	}
 
 	@Override
@@ -1041,7 +1088,9 @@ public class DynamoDb extends DatabaseDriver {
 
 	private CompletableFuture<BatchWriteItemResponse> batchWriteRetry(BatchWriteItemResponse items) {
 		if (items.unprocessedItems().size() > 0) {
-			return client.batchWriteItem(BatchWriteItemRequest.builder().requestItems(items.unprocessedItems()).build()).thenCompose(this::batchWriteRetry);
+			return client
+				.batchWriteItem(BatchWriteItemRequest.builder().requestItems(items.unprocessedItems()).build())
+				.thenCompose(this::batchWriteRetry);
 		} else {
 			return CompletableFuture.completedFuture(items);
 		}
