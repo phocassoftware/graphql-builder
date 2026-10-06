@@ -60,7 +60,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -112,14 +111,36 @@ public class DynamoDb extends DatabaseDriver {
 	private final Map<String, HashQueryBuilder> hashKeyExpander;
 	private final Map<String, Class<? extends Table>> classes;
 
-	private record ClientRouting(List<String> tables, Function<String, DynamoDbAsyncClient> clientFor, boolean shared) {
-		static ClientRouting shared(List<String> tables, DynamoDbAsyncClient client) {
-			return new ClientRouting(tables, ignored -> client, true);
+	private sealed interface ClientRouting permits SharedClientRouting, PerTableClientRouting {
+		List<String> tables();
+
+		DynamoDbAsyncClient clientFor(String table);
+	}
+
+	private record SharedClientRouting(List<String> tables, DynamoDbAsyncClient client) implements ClientRouting {
+		SharedClientRouting {
+			tables = List.copyOf(tables);
 		}
 
-		static ClientRouting perTable(List<DynamoDbTable> tables) {
-			var clients = Map.copyOf(tables.stream().collect(Collectors.toMap(DynamoDbTable::name, DynamoDbTable::client)));
-			return new ClientRouting(tables.stream().map(DynamoDbTable::name).toList(), clients::get, false);
+		@Override
+		public DynamoDbAsyncClient clientFor(String table) {
+			return client;
+		}
+	}
+
+	private record PerTableClientRouting(List<DynamoDbTable> tableClients) implements ClientRouting {
+		PerTableClientRouting {
+			tableClients = List.copyOf(tableClients);
+		}
+
+		@Override
+		public List<String> tables() {
+			return tableClients.stream().map(DynamoDbTable::name).toList();
+		}
+
+		@Override
+		public DynamoDbAsyncClient clientFor(String table) {
+			return tableClients.stream().filter(entry -> entry.name().equals(table)).findFirst().orElseThrow().client();
 		}
 	}
 
@@ -153,7 +174,7 @@ public class DynamoDb extends DatabaseDriver {
 	) {
 		this(
 			mapper,
-			ClientRouting.shared(entityTables, client),
+			new SharedClientRouting(entityTables, client),
 			historyTable,
 			idGenerator,
 			batchWriteSize,
@@ -179,7 +200,7 @@ public class DynamoDb extends DatabaseDriver {
 	) {
 		this(
 			mapper,
-			ClientRouting.perTable(tableClients),
+			new PerTableClientRouting(tableClients),
 			historyTable,
 			idGenerator,
 			batchWriteSize,
@@ -576,7 +597,7 @@ public class DynamoDb extends DatabaseDriver {
 			items.put(table, KeysAndAttributes.builder().keys(entries).consistentRead(true).build());
 		}
 		CompletableFuture<Flattener> result;
-		if (routing.shared()) {
+		if (routing instanceof SharedClientRouting) {
 			result = getItems(0, items, Flattener.create(this.entityTables, false));
 		} else {
 			result = CompletableFuture.completedFuture(Flattener.create(this.entityTables, false));
@@ -638,7 +659,7 @@ public class DynamoDb extends DatabaseDriver {
 	}
 
 	private DynamoDbAsyncClient clientFor(String table) {
-		return routing.clientFor().apply(table);
+		return routing.clientFor(table);
 	}
 
 	@Override
