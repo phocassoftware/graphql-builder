@@ -138,7 +138,7 @@ public class DynamoDb extends DatabaseDriver {
 	) {
 		this(
 			mapper,
-			new ClientRouting.Shared(entityTables, client),
+			ClientRouting.shared(entityTables, client),
 			historyTable,
 			idGenerator,
 			batchWriteSize,
@@ -151,32 +151,6 @@ public class DynamoDb extends DatabaseDriver {
 	}
 
 	public DynamoDb(
-		ObjectMapper mapper,
-		List<DynamoDbTable> tableClients,
-		String historyTable,
-		Supplier<String> idGenerator,
-		int batchWriteSize,
-		int maxRetry,
-		boolean globalEnabled,
-		boolean hash,
-		String classPath,
-		String parallelHashIndex
-	) {
-		this(
-			mapper,
-			new ClientRouting.PerTable(tableClients),
-			historyTable,
-			idGenerator,
-			batchWriteSize,
-			maxRetry,
-			globalEnabled,
-			hash,
-			classPath,
-			parallelHashIndex
-		);
-	}
-
-	DynamoDb(
 		ObjectMapper mapper,
 		ClientRouting routing,
 		String historyTable,

@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import tools.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.Table;
+import com.phocassoftware.graphql.database.manager.dynamo.ClientRouting;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDb;
 import java.util.List;
@@ -103,10 +104,16 @@ final class DynamoDbTableClientsTest {
 	void rejectsMixedRoutingConfigurationsInEitherSetterOrder() throws Exception {
 		try (var server = LocalDynamoDbServer.start()) {
 			var table = new DynamoDbTable("table", server.asyncClient());
-			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().tables("table").tableClients(table));
-			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().tableClients(table).tables("table"));
-			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().dynamoDbAsyncClient(server.asyncClient()).tableClients(table));
-			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().tableClients(table).dynamoDbAsyncClient(server.asyncClient()));
+			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().tables("table").clientRouting(ClientRouting.perTable(List.of(table))));
+			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().clientRouting(ClientRouting.perTable(List.of(table))).tables("table"));
+			assertThrows(
+				IllegalArgumentException.class,
+				() -> DynamoDbManager.builder().dynamoDbAsyncClient(server.asyncClient()).clientRouting(ClientRouting.perTable(List.of(table)))
+			);
+			assertThrows(
+				IllegalArgumentException.class,
+				() -> DynamoDbManager.builder().clientRouting(ClientRouting.perTable(List.of(table))).dynamoDbAsyncClient(server.asyncClient())
+			);
 		}
 	}
 
@@ -115,28 +122,14 @@ final class DynamoDbTableClientsTest {
 		try (var server = LocalDynamoDbServer.start()) {
 			var table = new DynamoDbTable("table", server.asyncClient());
 			for (var tables : List.of(List.<DynamoDbTable>of(), List.of(table, table))) {
-				assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().tableClients(tables));
-				assertThrows(
-					IllegalArgumentException.class,
-					() -> new DynamoDb(
-						new ObjectMapper(),
-						tables,
-						null,
-						() -> "id",
-						25,
-						10,
-						true,
-						false,
-						null,
-						null
-					)
-				);
+				assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().clientRouting(ClientRouting.perTable(tables)));
+				assertThrows(IllegalArgumentException.class, () -> ClientRouting.perTable(tables));
 			}
 		}
 	}
 
 	private static DynamoDbManager manager(DynamoDbTable... tables) {
-		return DynamoDbManager.builder().objectMapper(new ObjectMapper()).tableClients(tables).build();
+		return DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientRouting(ClientRouting.perTable(List.of(tables))).build();
 	}
 
 	static class Entry extends Table {

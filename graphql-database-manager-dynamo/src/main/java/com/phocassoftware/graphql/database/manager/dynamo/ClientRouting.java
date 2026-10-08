@@ -16,7 +16,7 @@ import com.google.common.base.Preconditions;
 import java.util.List;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 
-sealed interface ClientRouting {
+public sealed interface ClientRouting {
 	List<String> tables();
 
 	DynamoDbAsyncClient clientFor(String table);
@@ -30,15 +30,23 @@ sealed interface ClientRouting {
 	}
 
 	default ClientRouting withTables(List<String> tables) {
-		throw new IllegalArgumentException("Set tables or tableClients, not both");
+		throw new IllegalArgumentException("Set routing or tables, not both");
 	}
 
 	default ClientRouting withClient(DynamoDbAsyncClient client) {
-		throw new IllegalArgumentException("Set tableClients without dynamoDbAsyncClient");
+		throw new IllegalArgumentException("Set routing or dynamoDbAsyncClient, not both");
 	}
 
-	default ClientRouting withTableClients(List<DynamoDbTable> tables) {
+	static ClientRouting shared(List<String> tables, DynamoDbAsyncClient client) {
+		return new Shared(tables, client);
+	}
+
+	static ClientRouting perTable(List<DynamoDbTable> tables) {
 		return new PerTable(tables);
+	}
+
+	default ClientRouting withRouting(ClientRouting routing) {
+		throw new IllegalArgumentException("Routing is already configured");
 	}
 
 	default ClientRouting build() {
@@ -66,10 +74,10 @@ sealed interface ClientRouting {
 		}
 
 		@Override
-		public ClientRouting withTableClients(List<DynamoDbTable> tableClients) {
-			Preconditions.checkArgument(tables == null, "Set tables or tableClients, not both");
-			Preconditions.checkArgument(client == null, "Set tableClients without dynamoDbAsyncClient");
-			return new PerTable(tableClients);
+		public ClientRouting withRouting(ClientRouting routing) {
+			Preconditions.checkArgument(tables == null, "Set routing or tables, not both");
+			Preconditions.checkArgument(client == null, "Set routing or dynamoDbAsyncClient, not both");
+			return routing;
 		}
 
 		@Override

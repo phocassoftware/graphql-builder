@@ -44,7 +44,7 @@ public final class DynamoDbManager extends DatabaseManager {
 
 	public static class DyanmoDbManagerBuilder {
 
-		private ClientRouting routing = new ClientRouting.Shared(null, null);
+		private ClientRouting routing = ClientRouting.shared(null, null);
 		private ObjectMapper mapper;
 		private Supplier<String> idGenerator;
 		private DatabaseDriver database;
@@ -76,14 +76,9 @@ public final class DynamoDbManager extends DatabaseManager {
 			return tables(Arrays.asList(tables));
 		}
 
-		/** Tables are ordered from seed to writable; the last client receives writes. */
-		public DyanmoDbManagerBuilder tableClients(List<DynamoDbTable> tableClients) {
-			routing = routing.withTableClients(tableClients);
+		public DyanmoDbManagerBuilder clientRouting(ClientRouting routing) {
+			this.routing = this.routing.withRouting(routing);
 			return this;
-		}
-
-		public DyanmoDbManagerBuilder tableClients(DynamoDbTable... tableClients) {
-			return tableClients(Arrays.asList(tableClients));
 		}
 
 		public DyanmoDbManagerBuilder historyTable(String historyTable) {
