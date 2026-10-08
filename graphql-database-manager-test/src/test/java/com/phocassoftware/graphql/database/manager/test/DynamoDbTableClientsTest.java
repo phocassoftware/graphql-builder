@@ -15,10 +15,14 @@ package com.phocassoftware.graphql.database.manager.test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import tools.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.Table;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;
+import com.phocassoftware.graphql.database.manager.dynamo.DynamoDb;
+import java.util.List;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbTable;
 import org.junit.jupiter.api.Test;
 
@@ -33,6 +37,7 @@ final class DynamoDbTableClientsTest {
 			var overlayManager = manager(new DynamoDbTable("seed", seedServer.asyncClient()), new DynamoDbTable("overlay", overlayServer.asyncClient()));
 			var seed = seedManager.getVirtualDatabase("org");
 			var overlay = overlayManager.getVirtualDatabase("org");
+			assertSame(overlayServer.asyncClient(), overlayManager.getDynamoDbAsyncClient());
 			var updated = seed.put(new Entry("original"));
 			var deleted = seed.put(new Entry("delete me"));
 
@@ -55,6 +60,78 @@ final class DynamoDbTableClientsTest {
 			assertEquals("original", reloadedSeed.get(Entry.class, updated.getId()).getName());
 			assertTrue(reloadedSeed.getOptional(Entry.class, deleted.getId()).isPresent());
 			assertFalse(reloadedSeed.getOptional(Entry.class, created.getId()).isPresent());
+		}
+	}
+
+	@Test
+	void legacyBuilderRoutesSeedAndWritableTablesWithEitherSetterOrder() throws Exception {
+		try (var server = LocalDynamoDbServer.start()) {
+			server.createEntityTable("seed");
+			server.createEntityTable("overlay");
+			var seed = manager(new DynamoDbTable("seed", server.asyncClient())).getVirtualDatabase("org");
+			var entry = seed.put(new Entry("original"));
+			var clientFirst = DynamoDbManager
+				.builder()
+				.objectMapper(new ObjectMapper())
+				.dynamoDbAsyncClient(server.asyncClient())
+				.tables("seed", "overlay")
+				.build();
+			var tablesFirst = DynamoDbManager
+				.builder()
+				.objectMapper(new ObjectMapper())
+				.tables(List.of("seed", "overlay"))
+				.dynamoDbAsyncClient(server.asyncClient())
+				.build();
+
+			assertSame(server.asyncClient(), clientFirst.getDynamoDbAsyncClient());
+			assertSame(server.asyncClient(), tablesFirst.getDynamoDbAsyncClient());
+			var changed = clientFirst.getVirtualDatabase("org").get(Entry.class, entry.getId());
+			changed.setName("local");
+			clientFirst.getVirtualDatabase("org").put(changed);
+			assertEquals("local", tablesFirst.getVirtualDatabase("org").get(Entry.class, entry.getId()).getName());
+			assertEquals(
+				"original",
+				manager(new DynamoDbTable("seed", server.asyncClient()))
+					.getVirtualDatabase("org")
+					.get(Entry.class, entry.getId())
+					.getName()
+			);
+		}
+	}
+
+	@Test
+	void rejectsMixedRoutingConfigurationsInEitherSetterOrder() throws Exception {
+		try (var server = LocalDynamoDbServer.start()) {
+			var table = new DynamoDbTable("table", server.asyncClient());
+			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().tables("table").tableClients(table));
+			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().tableClients(table).tables("table"));
+			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().dynamoDbAsyncClient(server.asyncClient()).tableClients(table));
+			assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().tableClients(table).dynamoDbAsyncClient(server.asyncClient()));
+		}
+	}
+
+	@Test
+	void validatesTableClientsForBothManagerAndDirectDriver() throws Exception {
+		try (var server = LocalDynamoDbServer.start()) {
+			var table = new DynamoDbTable("table", server.asyncClient());
+			for (var tables : List.of(List.<DynamoDbTable>of(), List.of(table, table))) {
+				assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().tableClients(tables));
+				assertThrows(
+					IllegalArgumentException.class,
+					() -> new DynamoDb(
+						new ObjectMapper(),
+						tables,
+						null,
+						() -> "id",
+						25,
+						10,
+						true,
+						false,
+						null,
+						null
+					)
+				);
+			}
 		}
 	}
 

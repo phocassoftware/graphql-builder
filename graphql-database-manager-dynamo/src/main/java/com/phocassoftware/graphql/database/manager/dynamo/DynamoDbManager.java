@@ -29,13 +29,13 @@ public final class DynamoDbManager extends DatabaseManager {
 
 	private final ObjectMapper mapper;
 	private final Supplier<String> idGenerator;
-	private final DynamoDbAsyncClient client;
+	private final ClientRouting routing;
 
-	private DynamoDbManager(ObjectMapper mapper, Supplier<String> idGenerator, DynamoDbAsyncClient client, DatabaseDriver dynamoDb) {
+	private DynamoDbManager(ObjectMapper mapper, Supplier<String> idGenerator, ClientRouting routing, DatabaseDriver dynamoDb) {
 		super(dynamoDb);
 		this.mapper = mapper;
 		this.idGenerator = idGenerator;
-		this.client = client;
+		this.routing = routing;
 	}
 
 	public static DyanmoDbManagerBuilder builder() {
@@ -44,10 +44,8 @@ public final class DynamoDbManager extends DatabaseManager {
 
 	public static class DyanmoDbManagerBuilder {
 
-		private DynamoDbAsyncClient client;
+		private ClientRouting routing = new ClientRouting.Shared(null, null);
 		private ObjectMapper mapper;
-		private List<String> tables;
-		private List<DynamoDbTable> tableClients;
 		private Supplier<String> idGenerator;
 		private DatabaseDriver database;
 		private String historyTable;
@@ -60,7 +58,7 @@ public final class DynamoDbManager extends DatabaseManager {
 		private String parallelIndex = null;
 
 		public DyanmoDbManagerBuilder dynamoDbAsyncClient(DynamoDbAsyncClient client) {
-			this.client = client;
+			routing = routing.withClient(client);
 			return this;
 		}
 
@@ -70,18 +68,17 @@ public final class DynamoDbManager extends DatabaseManager {
 		}
 
 		public DyanmoDbManagerBuilder tables(List<String> tables) {
-			this.tables = tables;
+			routing = routing.withTables(tables);
 			return this;
 		}
 
 		public DyanmoDbManagerBuilder tables(String... tables) {
-			this.tables = Arrays.asList(tables);
-			return this;
+			return tables(Arrays.asList(tables));
 		}
 
 		/** Tables are ordered from seed to writable; the last client receives writes. */
 		public DyanmoDbManagerBuilder tableClients(List<DynamoDbTable> tableClients) {
-			this.tableClients = List.copyOf(tableClients);
+			routing = routing.withTableClients(tableClients);
 			return this;
 		}
 
@@ -140,46 +137,17 @@ public final class DynamoDbManager extends DatabaseManager {
 		}
 
 		public DynamoDbManager build() {
-			List<String> configuredTables = tables;
-			DynamoDbAsyncClient writableClient = client;
-			if (tableClients != null) {
-				Preconditions.checkArgument(configuredTables == null, "Set tables or tableClients, not both");
-				Preconditions.checkArgument(!tableClients.isEmpty(), "Empty table client array");
-				Preconditions.checkArgument(writableClient == null, "Set tableClients without dynamoDbAsyncClient");
-				configuredTables = tableClients.stream().map(DynamoDbTable::name).toList();
-				Preconditions.checkArgument(configuredTables.stream().distinct().count() == configuredTables.size(), "Table client names must be unique");
-				writableClient = tableClients.getLast().client();
-			}
-			Preconditions.checkNotNull(configuredTables, "Tables must be set");
-			Preconditions.checkArgument(!configuredTables.isEmpty(), "Empty table array");
 			Preconditions.checkNotNull(mapper, "Mapper is null");
-
-			if (writableClient == null) {
-				writableClient = client = DynamoDbAsyncClient.create();
-			}
+			routing = routing.build();
 			if (idGenerator == null) {
 				idGenerator = () -> UUID.randomUUID().toString();
 			}
 
 			if (database == null) {
-				database = tableClients == null
-					? new DynamoDb(
-						mapper,
-						configuredTables,
-						historyTable,
-						writableClient,
-						idGenerator,
-						batchWriteSize,
-						maxRetry,
-						globalEnabled,
-						hash,
-						classPath,
-						parallelIndex
-					)
-					: new DynamoDb(mapper, tableClients, historyTable, idGenerator, batchWriteSize, maxRetry, globalEnabled, hash, classPath, parallelIndex);
+				database = new DynamoDb(mapper, routing, historyTable, idGenerator, batchWriteSize, maxRetry, globalEnabled, hash, classPath, parallelIndex);
 			}
 
-			return new DynamoDbManager(mapper, idGenerator, writableClient, database);
+			return new DynamoDbManager(mapper, idGenerator, routing, database);
 		}
 	}
 
@@ -205,6 +173,6 @@ public final class DynamoDbManager extends DatabaseManager {
 	}
 
 	public DynamoDbAsyncClient getDynamoDbAsyncClient() {
-		return client;
+		return routing.writableClient();
 	}
 }
