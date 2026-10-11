@@ -24,6 +24,12 @@ import com.phocassoftware.graphql.database.manager.dynamo.ClientRouting;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDb;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
+import software.amazon.awssdk.services.dynamodb.model.BatchGetItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.BatchGetItemResponse;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbTable;
 import org.junit.jupiter.api.Test;
 
@@ -126,6 +132,140 @@ final class DynamoDbTableClientsTest {
 				assertThrows(IllegalArgumentException.class, () -> ClientRouting.perTable(tables));
 			}
 		}
+	}
+
+	@Test
+	void readsInTableOrderAndRetriesWithoutChangingOverlayPrecedence() throws Exception {
+		try (var firstServer = LocalDynamoDbServer.start(); var secondServer = LocalDynamoDbServer.start()) {
+			firstServer.createEntityTable("seed");
+			secondServer.createEntityTable("middle");
+			firstServer.createEntityTable("overlay");
+			for (var table : List
+				.of(
+					new DynamoDbTable("seed", firstServer.asyncClient()),
+					new DynamoDbTable("middle", secondServer.asyncClient()),
+					new DynamoDbTable("overlay", firstServer.asyncClient())
+				)) {
+				var entry = new Entry(table.name());
+				entry.setId("same-id");
+				manager(table).getVirtualDatabase("org").put(entry);
+			}
+
+			var requestOrder = new ArrayList<String>();
+			var first = new RecordingClient(firstServer.asyncClient(), true, requestOrder);
+			var second = new RecordingClient(secondServer.asyncClient(), false, requestOrder);
+			var routing = ClientRouting
+				.perTable(
+					List
+						.of(
+							new DynamoDbTable("seed", first),
+							new DynamoDbTable("middle", second),
+							new DynamoDbTable("overlay", first)
+						)
+				);
+			var manager = DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientRouting(routing).build();
+
+			assertEquals("overlay", manager.getVirtualDatabase("org").get(Entry.class, "same-id").getName());
+			assertSame(first, manager.getDynamoDbAsyncClient());
+			assertEquals(List.of("seed", "seed", "middle", "overlay"), requestOrder);
+			assertEquals(3, first.requests.size());
+			assertEquals(Set.of("seed"), first.requests.getFirst().requestItems().keySet());
+			assertEquals(first.requests.getFirst().requestItems(), first.requests.get(1).requestItems());
+			assertEquals(Set.of("overlay"), first.requests.getLast().requestItems().keySet());
+			assertEquals(1, second.requests.size());
+			assertEquals(Set.of("middle"), second.requests.getFirst().requestItems().keySet());
+		}
+	}
+
+	@Test
+	void sharedRoutingBatchesTablesAndRetriesOnTheSameClient() throws Exception {
+		try (var server = LocalDynamoDbServer.start()) {
+			for (var name : List.of("seed", "overlay")) {
+				server.createEntityTable(name);
+				var entry = new Entry(name);
+				entry.setId("same-id");
+				manager(new DynamoDbTable(name, server.asyncClient())).getVirtualDatabase("org").put(entry);
+			}
+			var client = new RecordingClient(server.asyncClient(), true, new ArrayList<>());
+			var manager = DynamoDbManager
+				.builder()
+				.objectMapper(new ObjectMapper())
+				.tables("seed", "overlay")
+				.dynamoDbAsyncClient(client)
+				.build();
+
+			assertEquals("overlay", manager.getVirtualDatabase("org").get(Entry.class, "same-id").getName());
+			assertEquals(2, client.requests.size());
+			assertEquals(Set.of("seed", "overlay"), client.requests.getFirst().requestItems().keySet());
+			assertEquals(client.requests.getFirst().requestItems(), client.requests.getLast().requestItems());
+		}
+	}
+
+	@Test
+	void routingBuilderKeepsBuiltConfigurationImmutable() throws Exception {
+		try (var server = LocalDynamoDbServer.start()) {
+			var names = new ArrayList<>(List.of("seed", "overlay"));
+			var builder = ClientRouting.builder().tables(names).client(server.asyncClient());
+			names.clear();
+			var first = builder.build();
+			var second = builder.tables(List.of("other")).build();
+			assertEquals(List.of("seed", "overlay"), first.tableNames());
+			assertEquals(List.of("other"), second.tableNames());
+			assertSame(server.asyncClient(), first.writableTable().client());
+			assertSame(first, ClientRouting.builder().routing(first).build());
+			assertThrows(NullPointerException.class, () -> ClientRouting.builder().build());
+			assertThrows(IllegalArgumentException.class, () -> ClientRouting.builder().tables(List.of()).build());
+			assertThrows(UnsupportedOperationException.class, () -> first.readBatches().clear());
+			assertThrows(UnsupportedOperationException.class, () -> first.readBatches().getFirst().tables().clear());
+		}
+	}
+
+	@Test
+	void sharedRoutingIsValidatedAndImmutable() throws Exception {
+		try (var server = LocalDynamoDbServer.start()) {
+			var names = new ArrayList<>(List.of("seed", "overlay"));
+			var routing = ClientRouting.shared(names, server.asyncClient());
+			names.clear();
+			assertEquals(List.of("seed", "overlay"), routing.tableNames());
+			assertEquals("overlay", routing.writableTable().name());
+			assertThrows(UnsupportedOperationException.class, () -> routing.tables().clear());
+			assertThrows(UnsupportedOperationException.class, () -> routing.tableNames().clear());
+			assertThrows(IllegalArgumentException.class, () -> ClientRouting.shared(List.of(), server.asyncClient()));
+			assertThrows(IllegalArgumentException.class, () -> ClientRouting.shared(List.of("same", "same"), server.asyncClient()));
+			assertThrows(IllegalArgumentException.class, () -> ClientRouting.shared(List.of(" "), server.asyncClient()));
+			assertThrows(NullPointerException.class, () -> ClientRouting.shared(List.of("table"), null));
+		}
+	}
+
+	private static final class RecordingClient implements DynamoDbAsyncClient {
+		private final DynamoDbAsyncClient delegate;
+		private final boolean retryFirstRequest;
+		private final List<String> requestOrder;
+		private final List<BatchGetItemRequest> requests = new ArrayList<>();
+
+		private RecordingClient(DynamoDbAsyncClient delegate, boolean retryFirstRequest, List<String> requestOrder) {
+			this.delegate = delegate;
+			this.retryFirstRequest = retryFirstRequest;
+			this.requestOrder = requestOrder;
+		}
+
+		@Override
+		public CompletableFuture<BatchGetItemResponse> batchGetItem(BatchGetItemRequest request) {
+			requests.add(request);
+			requestOrder.addAll(request.requestItems().keySet());
+			if (retryFirstRequest && requests.size() == 1) {
+				return CompletableFuture.completedFuture(BatchGetItemResponse.builder().unprocessedKeys(request.requestItems()).build());
+			}
+			return delegate.batchGetItem(request);
+		}
+
+		@Override
+		public String serviceName() {
+			return delegate.serviceName();
+		}
+
+		@Override
+		public void close() {}
 	}
 
 	private static DynamoDbManager manager(DynamoDbTable... tables) {

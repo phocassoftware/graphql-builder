@@ -14,99 +14,101 @@ package com.phocassoftware.graphql.database.manager.dynamo;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
+import java.util.Objects;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 
-public sealed interface ClientRouting {
-	List<String> tables();
+/** Validated routing in overlay order; the last table is the writable table. */
+public final class ClientRouting {
+	private final List<DynamoDbTable> tables;
+	private final List<String> tableNames;
+	private final List<ClientTables> readBatches;
 
-	DynamoDbAsyncClient clientFor(String table);
-
-	default String writableTable() {
-		return tables().getLast();
+	private ClientRouting(List<DynamoDbTable> tables, boolean shared) {
+		this.tables = List.copyOf(tables);
+		Preconditions.checkArgument(!this.tables.isEmpty(), "Empty table client array");
+		this.tableNames = this.tables.stream().map(DynamoDbTable::name).toList();
+		Preconditions.checkArgument(tableNames.stream().distinct().count() == tableNames.size(), "Table client names must be unique");
+		this.readBatches = shared
+			? List.of(new ClientTables(this.tables.getFirst().client(), tableNames))
+			: this.tables.stream().map(table -> new ClientTables(table.client(), List.of(table.name()))).toList();
 	}
 
-	default DynamoDbAsyncClient writableClient() {
-		return clientFor(writableTable());
+	public static ClientRouting shared(List<String> tables, DynamoDbAsyncClient client) {
+		Objects.requireNonNull(client, "client");
+		return new ClientRouting(tables.stream().map(table -> new DynamoDbTable(table, client)).toList(), true);
 	}
 
-	default ClientRouting withTables(List<String> tables) {
-		throw new IllegalArgumentException("Set routing or tables, not both");
+	public static ClientRouting perTable(List<DynamoDbTable> tables) {
+		return new ClientRouting(tables, false);
 	}
 
-	default ClientRouting withClient(DynamoDbAsyncClient client) {
-		throw new IllegalArgumentException("Set routing or dynamoDbAsyncClient, not both");
+	public List<DynamoDbTable> tables() {
+		return tables;
 	}
 
-	static ClientRouting shared(List<String> tables, DynamoDbAsyncClient client) {
-		return new Shared(tables, client);
+	public List<String> tableNames() {
+		return tableNames;
 	}
 
-	static ClientRouting perTable(List<DynamoDbTable> tables) {
-		return new PerTable(tables);
+	public DynamoDbTable writableTable() {
+		return tables.getLast();
 	}
 
-	default ClientRouting withRouting(ClientRouting routing) {
-		throw new IllegalArgumentException("Routing is already configured");
+	/** Batch requests in read order, with shared routing using one batch for all tables. */
+	public List<ClientTables> readBatches() {
+		return readBatches;
 	}
 
-	default ClientRouting build() {
-		return this;
+	public record ClientTables(DynamoDbAsyncClient client, List<String> tables) {
+		public ClientTables {
+			Objects.requireNonNull(client, "client");
+			tables = List.copyOf(tables);
+		}
 	}
 
-	record Shared(List<String> tables, DynamoDbAsyncClient client) implements ClientRouting {
-		public Shared {
-			tables = tables == null ? null : List.copyOf(tables);
+	public static Builder builder() {
+		return new Builder();
+	}
+
+	/** Collects configuration separately from validated routing. */
+	public static final class Builder {
+		private ClientRouting routing;
+		private List<String> tables;
+		private DynamoDbAsyncClient client;
+
+		private Builder() {}
+
+		public Builder tables(List<String> tables) {
+			Preconditions.checkArgument(routing == null, "Set routing or tables, not both");
+			this.tables = List.copyOf(tables);
+			return this;
 		}
 
-		@Override
-		public DynamoDbAsyncClient clientFor(String table) {
-			return client;
+		public Builder client(DynamoDbAsyncClient client) {
+			Preconditions.checkArgument(routing == null, "Set routing or dynamoDbAsyncClient, not both");
+			this.client = client;
+			return this;
 		}
 
-		@Override
-		public ClientRouting withTables(List<String> tables) {
-			return new Shared(tables, client);
-		}
-
-		@Override
-		public ClientRouting withClient(DynamoDbAsyncClient client) {
-			return new Shared(tables, client);
-		}
-
-		@Override
-		public ClientRouting withRouting(ClientRouting routing) {
+		public Builder routing(ClientRouting routing) {
+			Preconditions.checkArgument(this.routing == null, "Routing is already configured");
 			Preconditions.checkArgument(tables == null, "Set routing or tables, not both");
 			Preconditions.checkArgument(client == null, "Set routing or dynamoDbAsyncClient, not both");
-			return routing;
+			this.routing = Objects.requireNonNull(routing, "routing");
+			return this;
 		}
 
-		@Override
 		public ClientRouting build() {
+			if (routing != null) {
+				return routing;
+			}
 			Preconditions.checkNotNull(tables, "Tables must be set");
 			Preconditions.checkArgument(!tables.isEmpty(), "Empty table array");
-			return client == null ? new Shared(tables, DynamoDbAsyncClient.create()) : this;
+			if (client == null) {
+				client = DynamoDbAsyncClient.create();
+			}
+			return shared(tables, client);
 		}
 	}
 
-	record PerTable(List<DynamoDbTable> tableClients) implements ClientRouting {
-		public PerTable {
-			tableClients = List.copyOf(tableClients);
-			Preconditions.checkArgument(!tableClients.isEmpty(), "Empty table client array");
-			Preconditions
-				.checkArgument(
-					tableClients.stream().map(DynamoDbTable::name).distinct().count() == tableClients.size(),
-					"Table client names must be unique"
-				);
-		}
-
-		@Override
-		public List<String> tables() {
-			return tableClients.stream().map(DynamoDbTable::name).toList();
-		}
-
-		@Override
-		public DynamoDbAsyncClient clientFor(String table) {
-			return tableClients.stream().filter(entry -> entry.name().equals(table)).findFirst().orElseThrow().client();
-		}
-	}
 }

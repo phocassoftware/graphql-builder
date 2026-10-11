@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 
 public class DynamoDbTest {
 
@@ -65,7 +66,15 @@ public class DynamoDbTest {
 	}
 
 	private DynamoDb dynamoDb() {
-		return new DynamoDb(new ObjectMapper(), List.of("table"), List.of(), null, () -> "id");
+		return new DynamoDb(new ObjectMapper(), List.of("table"), List.of(), new DynamoDbAsyncClient() {
+			@Override
+			public String serviceName() {
+				return "dynamodb";
+			}
+
+			@Override
+			public void close() {}
+		}, () -> "id");
 	}
 
 	static class ExpiringTable extends Table {
