@@ -30,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 import software.amazon.awssdk.services.dynamodb.model.BatchGetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.BatchGetItemResponse;
-import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbTable;
+import com.phocassoftware.graphql.database.manager.dynamo.ClientRouting;
 import org.junit.jupiter.api.Test;
 
 final class DynamoDbTableClientsTest {
@@ -40,8 +40,11 @@ final class DynamoDbTableClientsTest {
 			seedServer.createEntityTable("seed");
 			overlayServer.createEntityTable("overlay");
 
-			var seedManager = manager(new DynamoDbTable("seed", seedServer.asyncClient()));
-			var overlayManager = manager(new DynamoDbTable("seed", seedServer.asyncClient()), new DynamoDbTable("overlay", overlayServer.asyncClient()));
+			var seedManager = manager(new DynamoDbClientManager(List.of("seed"), seedServer.asyncClient()));
+			var overlayManager = manager(
+				new DynamoDbClientManager(List.of("seed"), seedServer.asyncClient()),
+				new DynamoDbClientManager(List.of("overlay"), overlayServer.asyncClient())
+			);
 			var seed = seedManager.getVirtualDatabase("org");
 			var overlay = overlayManager.getVirtualDatabase("org");
 			assertSame(overlayServer.asyncClient(), overlayManager.getDynamoDbAsyncClient());
@@ -75,7 +78,7 @@ final class DynamoDbTableClientsTest {
 		try (var server = LocalDynamoDbServer.start()) {
 			server.createEntityTable("seed");
 			server.createEntityTable("overlay");
-			var seed = manager(new DynamoDbTable("seed", server.asyncClient())).getVirtualDatabase("org");
+			var seed = manager(new DynamoDbClientManager(List.of("seed"), server.asyncClient())).getVirtualDatabase("org");
 			var entry = seed.put(new Entry("original"));
 			var clientFirst = DynamoDbManager
 				.builder()
@@ -98,7 +101,7 @@ final class DynamoDbTableClientsTest {
 			assertEquals("local", tablesFirst.getVirtualDatabase("org").get(Entry.class, entry.getId()).getName());
 			assertEquals(
 				"original",
-				manager(new DynamoDbTable("seed", server.asyncClient()))
+				manager(new DynamoDbClientManager(List.of("seed"), server.asyncClient()))
 					.getVirtualDatabase("org")
 					.get(Entry.class, entry.getId())
 					.getName()
@@ -109,22 +112,22 @@ final class DynamoDbTableClientsTest {
 	@Test
 	void rejectsMixedRoutingConfigurationsInEitherSetterOrder() throws Exception {
 		try (var server = LocalDynamoDbServer.start()) {
-			var table = new DynamoDbTable("table", server.asyncClient());
+			var table = new DynamoDbClientManager(List.of("table"), server.asyncClient());
 			assertThrows(
 				IllegalArgumentException.class,
-				() -> DynamoDbManager.builder().tables("table").clientManager(DynamoDbClientManager.perTable(List.of(table)))
+				() -> DynamoDbManager.builder().tables("table").clientRouting(new ClientRouting(List.of(table)))
 			);
 			assertThrows(
 				IllegalArgumentException.class,
-				() -> DynamoDbManager.builder().clientManager(DynamoDbClientManager.perTable(List.of(table))).tables("table")
+				() -> DynamoDbManager.builder().clientRouting(new ClientRouting(List.of(table))).tables("table")
 			);
 			assertThrows(
 				IllegalArgumentException.class,
-				() -> DynamoDbManager.builder().dynamoDbAsyncClient(server.asyncClient()).clientManager(DynamoDbClientManager.perTable(List.of(table)))
+				() -> DynamoDbManager.builder().dynamoDbAsyncClient(server.asyncClient()).clientRouting(new ClientRouting(List.of(table)))
 			);
 			assertThrows(
 				IllegalArgumentException.class,
-				() -> DynamoDbManager.builder().clientManager(DynamoDbClientManager.perTable(List.of(table))).dynamoDbAsyncClient(server.asyncClient())
+				() -> DynamoDbManager.builder().clientRouting(new ClientRouting(List.of(table))).dynamoDbAsyncClient(server.asyncClient())
 			);
 		}
 	}
@@ -132,10 +135,10 @@ final class DynamoDbTableClientsTest {
 	@Test
 	void validatesTableClientsForBothManagerAndDirectDriver() throws Exception {
 		try (var server = LocalDynamoDbServer.start()) {
-			var table = new DynamoDbTable("table", server.asyncClient());
-			for (var tables : List.of(List.<DynamoDbTable>of(), List.of(table, table))) {
-				assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().clientManager(DynamoDbClientManager.perTable(tables)));
-				assertThrows(IllegalArgumentException.class, () -> DynamoDbClientManager.perTable(tables));
+			var table = new DynamoDbClientManager(List.of("table"), server.asyncClient());
+			for (var tables : List.of(List.<DynamoDbClientManager>of(), List.of(table, table))) {
+				assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().clientRouting(new ClientRouting(tables)));
+				assertThrows(IllegalArgumentException.class, () -> new ClientRouting(tables));
 			}
 		}
 	}
@@ -148,11 +151,11 @@ final class DynamoDbTableClientsTest {
 			firstServer.createEntityTable("overlay");
 			for (var table : List
 				.of(
-					new DynamoDbTable("seed", firstServer.asyncClient()),
-					new DynamoDbTable("middle", secondServer.asyncClient()),
-					new DynamoDbTable("overlay", firstServer.asyncClient())
+					new DynamoDbClientManager(List.of("seed"), firstServer.asyncClient()),
+					new DynamoDbClientManager(List.of("middle"), secondServer.asyncClient()),
+					new DynamoDbClientManager(List.of("overlay"), firstServer.asyncClient())
 				)) {
-				var entry = new Entry(table.name());
+				var entry = new Entry(table.tables().getFirst());
 				entry.setId("same-id");
 				manager(table).getVirtualDatabase("org").put(entry);
 			}
@@ -160,16 +163,15 @@ final class DynamoDbTableClientsTest {
 			var requestOrder = new ArrayList<String>();
 			var first = new RecordingClient(firstServer.asyncClient(), true, requestOrder);
 			var second = new RecordingClient(secondServer.asyncClient(), false, requestOrder);
-			var clientManager = DynamoDbClientManager
-				.perTable(
-					List
-						.of(
-							new DynamoDbTable("seed", first),
-							new DynamoDbTable("middle", second),
-							new DynamoDbTable("overlay", first)
-						)
-				);
-			var manager = DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientManager(clientManager).build();
+			var clientManager = new ClientRouting(
+				List
+					.of(
+						new DynamoDbClientManager(List.of("seed"), first),
+						new DynamoDbClientManager(List.of("middle"), second),
+						new DynamoDbClientManager(List.of("overlay"), first)
+					)
+			);
+			var manager = DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientRouting(clientManager).build();
 
 			assertEquals("overlay", manager.getVirtualDatabase("org").get(Entry.class, "same-id").getName());
 			assertSame(first, manager.getDynamoDbAsyncClient());
@@ -190,7 +192,7 @@ final class DynamoDbTableClientsTest {
 				server.createEntityTable(name);
 				var entry = new Entry(name);
 				entry.setId("same-id");
-				manager(new DynamoDbTable(name, server.asyncClient())).getVirtualDatabase("org").put(entry);
+				manager(new DynamoDbClientManager(List.of(name), server.asyncClient())).getVirtualDatabase("org").put(entry);
 			}
 			var client = new RecordingClient(server.asyncClient(), true, new ArrayList<>());
 			var manager = DynamoDbManager
@@ -215,7 +217,7 @@ final class DynamoDbTableClientsTest {
 				server.createEntityTable(name);
 				var entry = new Entry(name);
 				entry.setId("same-id");
-				manager(new DynamoDbTable(name, server.asyncClient())).getVirtualDatabase("org").put(entry);
+				manager(new DynamoDbClientManager(List.of(name), server.asyncClient())).getVirtualDatabase("org").put(entry);
 			}
 			var first = new RecordingClient(seedServer.asyncClient(), true, new ArrayList<>());
 			var second = new RecordingClient(overlayServer.asyncClient(), false, new ArrayList<>());
@@ -223,16 +225,16 @@ final class DynamoDbTableClientsTest {
 			var groups = new ArrayList<>(
 				List
 					.of(
-						new DynamoDbClientManager.ClientTables(first, names),
-						new DynamoDbClientManager.ClientTables(second, List.of("overlay"))
+						new DynamoDbClientManager(names, first),
+						new DynamoDbClientManager(List.of("overlay"), second)
 					)
 			);
-			var clients = new DynamoDbClientManager(groups);
+			var clients = new ClientRouting(groups);
 			names.clear();
 			groups.clear();
-			var manager = DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientManager(clients).build();
+			var manager = DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientRouting(clients).build();
 
-			assertEquals(List.of("seed", "middle", "overlay"), clients.tableNames());
+			assertEquals(List.of("seed", "middle", "overlay"), clients.tables());
 			assertEquals("overlay", manager.getVirtualDatabase("org").get(Entry.class, "same-id").getName());
 			assertSame(second, manager.getDynamoDbAsyncClient());
 			assertEquals(2, first.requests.size());
@@ -242,11 +244,11 @@ final class DynamoDbTableClientsTest {
 			assertEquals(Set.of("overlay"), second.requests.getFirst().requestItems().keySet());
 			assertThrows(
 				IllegalArgumentException.class,
-				() -> new DynamoDbClientManager(
+				() -> new ClientRouting(
 					List
 						.of(
-							new DynamoDbClientManager.ClientTables(first, List.of("same")),
-							new DynamoDbClientManager.ClientTables(second, List.of("same"))
+							new DynamoDbClientManager(List.of("same"), first),
+							new DynamoDbClientManager(List.of("same"), second)
 						)
 				)
 			);
@@ -257,18 +259,18 @@ final class DynamoDbTableClientsTest {
 	void routingBuilderKeepsBuiltConfigurationImmutable() throws Exception {
 		try (var server = LocalDynamoDbServer.start()) {
 			var names = new ArrayList<>(List.of("seed", "overlay"));
-			var builder = DynamoDbClientManager.builder().tables(names).client(server.asyncClient());
+			var builder = ClientRouting.builder().tables(names).client(server.asyncClient());
 			names.clear();
 			var first = builder.build();
 			var second = builder.tables(List.of("other")).build();
-			assertEquals(List.of("seed", "overlay"), first.tableNames());
-			assertEquals(List.of("other"), second.tableNames());
-			assertSame(server.asyncClient(), first.writableTable().client());
-			assertSame(first, DynamoDbClientManager.builder().clientManager(first).build());
-			assertThrows(NullPointerException.class, () -> DynamoDbClientManager.builder().build());
-			assertThrows(IllegalArgumentException.class, () -> DynamoDbClientManager.builder().tables(List.of()).build());
-			assertThrows(UnsupportedOperationException.class, () -> first.readBatches().clear());
-			assertThrows(UnsupportedOperationException.class, () -> first.readBatches().getFirst().tables().clear());
+			assertEquals(List.of("seed", "overlay"), first.tables());
+			assertEquals(List.of("other"), second.tables());
+			assertSame(server.asyncClient(), first.writableClient());
+			assertSame(first, ClientRouting.builder().routing(first).build());
+			assertThrows(NullPointerException.class, () -> ClientRouting.builder().build());
+			assertThrows(IllegalArgumentException.class, () -> ClientRouting.builder().tables(List.of()).build());
+			assertThrows(UnsupportedOperationException.class, () -> first.clients().clear());
+			assertThrows(UnsupportedOperationException.class, () -> first.clients().getFirst().tables().clear());
 		}
 	}
 
@@ -276,16 +278,16 @@ final class DynamoDbTableClientsTest {
 	void sharedRoutingIsValidatedAndImmutable() throws Exception {
 		try (var server = LocalDynamoDbServer.start()) {
 			var names = new ArrayList<>(List.of("seed", "overlay"));
-			var clientManager = DynamoDbClientManager.shared(names, server.asyncClient());
+			var clientManager = ClientRouting.shared(names, server.asyncClient());
 			names.clear();
-			assertEquals(List.of("seed", "overlay"), clientManager.tableNames());
-			assertEquals("overlay", clientManager.writableTable().name());
+			assertEquals(List.of("seed", "overlay"), clientManager.tables());
+			assertEquals("overlay", clientManager.writableTable());
 			assertThrows(UnsupportedOperationException.class, () -> clientManager.tables().clear());
-			assertThrows(UnsupportedOperationException.class, () -> clientManager.tableNames().clear());
-			assertThrows(IllegalArgumentException.class, () -> DynamoDbClientManager.shared(List.of(), server.asyncClient()));
-			assertThrows(IllegalArgumentException.class, () -> DynamoDbClientManager.shared(List.of("same", "same"), server.asyncClient()));
-			assertThrows(IllegalArgumentException.class, () -> DynamoDbClientManager.shared(List.of(" "), server.asyncClient()));
-			assertThrows(NullPointerException.class, () -> DynamoDbClientManager.shared(List.of("table"), null));
+			assertThrows(UnsupportedOperationException.class, () -> clientManager.tables().clear());
+			assertThrows(IllegalArgumentException.class, () -> ClientRouting.shared(List.of(), server.asyncClient()));
+			assertThrows(IllegalArgumentException.class, () -> ClientRouting.shared(List.of("same", "same"), server.asyncClient()));
+			assertThrows(IllegalArgumentException.class, () -> ClientRouting.shared(List.of(" "), server.asyncClient()));
+			assertThrows(NullPointerException.class, () -> ClientRouting.shared(List.of("table"), null));
 		}
 	}
 
@@ -320,8 +322,8 @@ final class DynamoDbTableClientsTest {
 		public void close() {}
 	}
 
-	private static DynamoDbManager manager(DynamoDbTable... tables) {
-		return DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientManager(DynamoDbClientManager.perTable(List.of(tables))).build();
+	private static DynamoDbManager manager(DynamoDbClientManager... tables) {
+		return DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientRouting(new ClientRouting(List.of(tables))).build();
 	}
 
 	static class Entry extends Table {

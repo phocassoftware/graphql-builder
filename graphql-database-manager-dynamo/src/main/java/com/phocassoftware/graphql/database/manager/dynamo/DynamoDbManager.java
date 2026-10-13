@@ -29,13 +29,13 @@ public final class DynamoDbManager extends DatabaseManager {
 
 	private final ObjectMapper mapper;
 	private final Supplier<String> idGenerator;
-	private final DynamoDbClientManager clientManager;
+	private final ClientRouting routing;
 
-	private DynamoDbManager(ObjectMapper mapper, Supplier<String> idGenerator, DynamoDbClientManager clientManager, DatabaseDriver dynamoDb) {
+	private DynamoDbManager(ObjectMapper mapper, Supplier<String> idGenerator, ClientRouting routing, DatabaseDriver dynamoDb) {
 		super(dynamoDb);
 		this.mapper = mapper;
 		this.idGenerator = idGenerator;
-		this.clientManager = clientManager;
+		this.routing = routing;
 	}
 
 	public static DyanmoDbManagerBuilder builder() {
@@ -44,7 +44,7 @@ public final class DynamoDbManager extends DatabaseManager {
 
 	public static class DyanmoDbManagerBuilder {
 
-		private final DynamoDbClientManager.Builder clientManager = DynamoDbClientManager.builder();
+		private final ClientRouting.Builder routing = ClientRouting.builder();
 		private ObjectMapper mapper;
 		private Supplier<String> idGenerator;
 		private DatabaseDriver database;
@@ -58,7 +58,7 @@ public final class DynamoDbManager extends DatabaseManager {
 		private String parallelIndex = null;
 
 		public DyanmoDbManagerBuilder dynamoDbAsyncClient(DynamoDbAsyncClient client) {
-			clientManager.client(client);
+			routing.client(client);
 			return this;
 		}
 
@@ -68,7 +68,7 @@ public final class DynamoDbManager extends DatabaseManager {
 		}
 
 		public DyanmoDbManagerBuilder tables(List<String> tables) {
-			clientManager.tables(tables);
+			routing.tables(tables);
 			return this;
 		}
 
@@ -76,8 +76,8 @@ public final class DynamoDbManager extends DatabaseManager {
 			return tables(Arrays.asList(tables));
 		}
 
-		public DyanmoDbManagerBuilder clientManager(DynamoDbClientManager clientManager) {
-			this.clientManager.clientManager(clientManager);
+		public DyanmoDbManagerBuilder clientRouting(ClientRouting routing) {
+			this.routing.routing(routing);
 			return this;
 		}
 
@@ -133,7 +133,7 @@ public final class DynamoDbManager extends DatabaseManager {
 
 		public DynamoDbManager build() {
 			Preconditions.checkNotNull(mapper, "Mapper is null");
-			var resolvedClientManager = clientManager.build();
+			var resolvedRouting = routing.build();
 			if (idGenerator == null) {
 				idGenerator = () -> UUID.randomUUID().toString();
 			}
@@ -141,7 +141,7 @@ public final class DynamoDbManager extends DatabaseManager {
 			if (database == null) {
 				database = new DynamoDb(
 					mapper,
-					resolvedClientManager,
+					resolvedRouting,
 					historyTable,
 					idGenerator,
 					batchWriteSize,
@@ -153,7 +153,7 @@ public final class DynamoDbManager extends DatabaseManager {
 				);
 			}
 
-			return new DynamoDbManager(mapper, idGenerator, resolvedClientManager, database);
+			return new DynamoDbManager(mapper, idGenerator, resolvedRouting, database);
 		}
 	}
 
@@ -179,6 +179,6 @@ public final class DynamoDbManager extends DatabaseManager {
 	}
 
 	public DynamoDbAsyncClient getDynamoDbAsyncClient() {
-		return clientManager.writableTable().client();
+		return routing.writableClient();
 	}
 }
