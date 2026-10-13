@@ -72,7 +72,6 @@ import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.DeleteRequest;
-import software.amazon.awssdk.services.dynamodb.model.KeysAndAttributes;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest.Builder;
 import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
@@ -87,7 +86,7 @@ public class DynamoDb extends DatabaseDriver {
 	private static final int MAX_RETRY = 20;
 
 	private final String historyTable;
-	private final ClientRouting routing;
+	private final DynamoDbClientManager clientManager;
 	private final ObjectMapper mapper;
 	private final Supplier<String> idGenerator;
 	private final int batchWriteSize;
@@ -138,7 +137,7 @@ public class DynamoDb extends DatabaseDriver {
 	) {
 		this(
 			mapper,
-			ClientRouting.shared(entityTables, client),
+			DynamoDbClientManager.shared(entityTables, client),
 			historyTable,
 			idGenerator,
 			batchWriteSize,
@@ -152,7 +151,7 @@ public class DynamoDb extends DatabaseDriver {
 
 	public DynamoDb(
 		ObjectMapper mapper,
-		ClientRouting routing,
+		DynamoDbClientManager clientManager,
 		String historyTable,
 		Supplier<String> idGenerator,
 		int batchWriteSize,
@@ -163,7 +162,7 @@ public class DynamoDb extends DatabaseDriver {
 		String parallelHashIndex
 	) {
 		this.mapper = mapper;
-		this.routing = routing;
+		this.clientManager = clientManager;
 		this.historyTable = historyTable;
 		this.idGenerator = idGenerator;
 		this.batchWriteSize = batchWriteSize;
@@ -226,15 +225,15 @@ public class DynamoDb extends DatabaseDriver {
 		}
 
 		String sourceTable = getSourceTable(entity);
-		if (sourceTable.equals(routing.writableTable().name())) {
+		if (sourceTable.equals(clientManager.writableTable().name())) {
 			Map<String, AttributeValue> key = mapWithKeys(organisationId, entity);
 
-			return routing
+			return clientManager
 				.writableTable()
 				.client()
 				.deleteItem(
 					request -> request
-						.tableName(routing.writableTable().name())
+						.tableName(clientManager.writableTable().name())
 						.key(key)
 						.applyMutation(mutator -> {
 							String sourceOrganisationId = getSourceOrganisationId(entity);
@@ -267,10 +266,10 @@ public class DynamoDb extends DatabaseDriver {
 			Map<String, AttributeValue> item = mapWithKeys(organisationId, entity, true);
 			item.put("deleted", AttributeValue.builder().bool(true).build());
 
-			return routing
+			return clientManager
 				.writableTable()
 				.client()
-				.putItem(request -> request.tableName(routing.writableTable().name()).item(item))
+				.putItem(request -> request.tableName(clientManager.writableTable().name()).item(item))
 				.thenApply(response -> {
 					return entity;
 				});
@@ -296,7 +295,7 @@ public class DynamoDb extends DatabaseDriver {
 
 	private CompletableFuture<?> nonConditionalBulkPutChunk(List<PutValue> items) {
 		var writeRequests = items.stream().map(i -> buildWriteRequest(i)).collect(Collectors.toList());
-		var data = Map.of(routing.writableTable().name(), writeRequests);
+		var data = Map.of(clientManager.writableTable().name(), writeRequests);
 		return putItems(0, data)
 			.handle((response, error) -> {
 				if (error == null) {
@@ -375,7 +374,7 @@ public class DynamoDb extends DatabaseDriver {
 		return CompletableFuture
 			.supplyAsync(
 				() -> {
-					return routing
+					return clientManager
 						.writableTable()
 						.client()
 						.batchWriteItem(builder -> builder.requestItems(data))
@@ -443,7 +442,7 @@ public class DynamoDb extends DatabaseDriver {
 			});
 
 		item.put("links", AttributeValue.builder().m(links).build());
-		setSource(entity, routing.writableTable().name(), getLinks(entity), organisationId);
+		setSource(entity, clientManager.writableTable().name(), getLinks(entity), organisationId);
 
 		String secondaryOrganisation = TableUtil.getSecondaryOrganisation(entity);
 		String secondaryGlobal = TableUtil.getSecondaryGlobal(entity);
@@ -475,18 +474,18 @@ public class DynamoDb extends DatabaseDriver {
 		String sourceTable = getSourceTable(entity);
 		var item = buildPutEntity(organisationId, entity, updateEntity);
 
-		return routing
+		return clientManager
 			.writableTable()
 			.client()
 			.putItem(
 				request -> request
-					.tableName(routing.writableTable().name())
+					.tableName(clientManager.writableTable().name())
 					.item(item)
 					.applyMutation(mutator -> {
 						if (check) {
 							String sourceOrganisationId = getSourceOrganisationId(entity);
 
-							if (sourceTable != null && !sourceTable.equals(routing.writableTable().name()) || !sourceOrganisationId.equals(organisationId)
+							if (sourceTable != null && !sourceTable.equals(clientManager.writableTable().name()) || !sourceOrganisationId.equals(organisationId)
 								|| revision == 0) { // Entries may predate revision tracking.
 								mutator.conditionExpression("attribute_not_exists(revision)");
 							} else {
@@ -511,7 +510,7 @@ public class DynamoDb extends DatabaseDriver {
 
 	@Override
 	public int maxBatchSize() {
-		int size = 100 / routing.tables().size();
+		int size = 100 / clientManager.tables().size();
 		if (globalEnabled) {
 			size = size / 2;
 		}
@@ -533,14 +532,7 @@ public class DynamoDb extends DatabaseDriver {
 			}
 		});
 
-		var result = CompletableFuture.completedFuture(Flattener.create(routing.tableNames(), false));
-		for (var batch : routing.readBatches()) {
-			Map<String, KeysAndAttributes> items = new HashMap<>();
-			for (var table : batch.tables()) {
-				items.put(table, KeysAndAttributes.builder().keys(entries).consistentRead(true).build());
-			}
-			result = result.thenCompose(flattener -> getItems(0, batch.client(), items, flattener));
-		}
+		var result = clientManager.getItems(entries, maxRetry);
 		return result.thenApply(flattener -> {
 			var toReturn = new ArrayList<T>();
 			for (var key : keys) {
@@ -553,26 +545,6 @@ public class DynamoDb extends DatabaseDriver {
 			}
 			return toReturn;
 		});
-	}
-
-	private CompletableFuture<Flattener> getItems(int count, DynamoDbAsyncClient client, Map<String, KeysAndAttributes> items, Flattener flattener) {
-		if (count > maxRetry) {
-			throw new RuntimeException("Failed to get keys from dynamo after " + maxRetry + " attempts");
-		}
-		var delay = CompletableFuture.delayedExecutor(100 * count * count, TimeUnit.MILLISECONDS);
-		return CompletableFuture
-			.supplyAsync(
-				() -> client
-					.batchGetItem(builder -> builder.requestItems(items))
-					.thenCompose(response -> {
-						response.responses().forEach(flattener::add);
-						return response.unprocessedKeys().isEmpty()
-							? CompletableFuture.completedFuture(flattener)
-							: getItems(count + 1, client, response.unprocessedKeys(), flattener);
-					}),
-				delay
-			)
-			.thenCompose(result -> result);
 	}
 
 	@Override
@@ -594,7 +566,7 @@ public class DynamoDb extends DatabaseDriver {
 
 	@Override
 	public <T extends Table> CompletableFuture<List<T>> query(DatabaseQueryKey<T> key) {
-		var futures = routing
+		var futures = clientManager
 			.tables()
 			.stream()
 			.flatMap(table -> {
@@ -611,7 +583,7 @@ public class DynamoDb extends DatabaseDriver {
 		var future = CompletableFutureUtil.sequence(futures);
 
 		return future.thenApply(results -> {
-			var flattener = Flattener.create(routing.tableNames(), false);
+			var flattener = Flattener.create(clientManager.tableNames(), false);
 
 			results.forEach(list -> flattener.addItems(list));
 			return flattener.results(mapper, key.getQuery().getType(), Optional.ofNullable(key.getQuery().getLimit()));
@@ -638,7 +610,7 @@ public class DynamoDb extends DatabaseDriver {
 		var targetException = new AtomicReference<Exception>();
 
 		List<T> toReturn = new ArrayList<T>();
-		return routing
+		return clientManager
 			.writableTable()
 			.client()
 			.queryPaginator(builder.build())
@@ -769,7 +741,7 @@ public class DynamoDb extends DatabaseDriver {
 		var id = AttributeValue.builder().s(table(type) + ":" + value).build();
 
 		CompletableFuture<List<List<DynamoItem>>> future = CompletableFuture.completedFuture(new ArrayList<>());
-		for (var table : routing.tables()) {
+		for (var table : clientManager.tables()) {
 			future = future
 				.thenCombine(
 					queryGlobal(table, id),
@@ -780,7 +752,7 @@ public class DynamoDb extends DatabaseDriver {
 				);
 		}
 		return future.thenApply(results -> {
-			var flattener = Flattener.create(routing.tableNames(), true);
+			var flattener = Flattener.create(clientManager.tableNames(), true);
 			results.forEach(list -> flattener.addItems(list));
 			return flattener.results(mapper, type);
 		});
@@ -823,7 +795,7 @@ public class DynamoDb extends DatabaseDriver {
 		var id = AttributeValue.builder().s(table(type) + ":" + value).build();
 
 		CompletableFuture<Set<String>> future = CompletableFuture.completedFuture(new HashSet<>());
-		for (var table : routing.tables()) {
+		for (var table : clientManager.tables()) {
 			future = future
 				.thenCombine(
 					querySecondary(table, organisationIdAttribute, id),
@@ -945,7 +917,7 @@ public class DynamoDb extends DatabaseDriver {
 	@Override
 	public <T extends Table> BackupItem toBackupItem(String organisationId, T entity) {
 		Map<String, AttributeValue> item = buildPutEntity(organisationId, entity, false);
-		return new DynamoBackupItem(routing.writableTable().name(), item, mapper);
+		return new DynamoBackupItem(clientManager.writableTable().name(), item, mapper);
 	}
 
 	@Override
@@ -973,7 +945,7 @@ public class DynamoDb extends DatabaseDriver {
 			if (revision != null) {
 				t.setRevision(((Number) revision).longValue());
 			}
-			setSource(t, routing.writableTable().name(), item.getLinks(), item.getOrganisationId());
+			setSource(t, clientManager.writableTable().name(), item.getLinks(), item.getOrganisationId());
 		}
 		return entity;
 	}
@@ -1007,10 +979,10 @@ public class DynamoDb extends DatabaseDriver {
 			.map(putRequestBatch -> {
 				final var batchPutRequest = BatchWriteItemRequest
 					.builder()
-					.requestItems(Map.of(backupTableType == BackupTableType.History ? historyTable : routing.writableTable().name(), putRequestBatch))
+					.requestItems(Map.of(backupTableType == BackupTableType.History ? historyTable : clientManager.writableTable().name(), putRequestBatch))
 					.build();
 
-				return routing
+				return clientManager
 					.writableTable()
 					.client()
 					.batchWriteItem(batchPutRequest)
@@ -1030,7 +1002,7 @@ public class DynamoDb extends DatabaseDriver {
 
 	private CompletableFuture<BatchWriteItemResponse> batchWriteRetry(BatchWriteItemResponse items) {
 		if (items.unprocessedItems().size() > 0) {
-			return routing
+			return clientManager
 				.writableTable()
 				.client()
 				.batchWriteItem(BatchWriteItemRequest.builder().requestItems(items.unprocessedItems()).build())
@@ -1044,7 +1016,7 @@ public class DynamoDb extends DatabaseDriver {
 	public CompletableFuture<List<BackupItem>> takeBackup(String organisationId) {
 		CompletableFuture<List<List<BackupItem>>> future = CompletableFuture.completedFuture(new ArrayList<>());
 		AttributeValue orgId = AttributeValue.builder().s(organisationId).build();
-		for (var table : routing.tables()) {
+		for (var table : clientManager.tables()) {
 			future = future
 				.thenCombine(
 					takeBackup(table, orgId),
@@ -1081,7 +1053,7 @@ public class DynamoDb extends DatabaseDriver {
 				Map<String, AttributeValue> keyConditions = new HashMap<>();
 				AttributeValue orgIdTypeAttr = AttributeValue.builder().s(orgIdType).build();
 				keyConditions.put(":organisationIdType", orgIdTypeAttr);
-				return routing
+				return clientManager
 					.writableTable()
 					.client()
 					.queryPaginator(
@@ -1184,12 +1156,12 @@ public class DynamoDb extends DatabaseDriver {
 				Map<String, String> k = new HashMap<>();
 				k.put("#table", targetTable);
 
-				return routing
+				return clientManager
 					.writableTable()
 					.client()
 					.updateItem(
 						request -> request
-							.tableName(routing.writableTable().name())
+							.tableName(clientManager.writableTable().name())
 							.key(targetKey)
 							.updateExpression("DELETE links.#table :val ADD revision :revisionIncrement")
 							.expressionAttributeNames(k)
@@ -1215,12 +1187,12 @@ public class DynamoDb extends DatabaseDriver {
 				Map<String, String> k = new HashMap<>();
 				k.put("#table", targetTable);
 
-				return routing
+				return clientManager
 					.writableTable()
 					.client()
 					.updateItem(
 						request -> request
-							.tableName(routing.writableTable().name())
+							.tableName(clientManager.writableTable().name())
 							.key(targetKey)
 							.conditionExpression("attribute_exists(links)")
 							.updateExpression("ADD links.#table :val, revision :revisionIncrement")
@@ -1235,12 +1207,12 @@ public class DynamoDb extends DatabaseDriver {
 								v.put(":val", AttributeValue.builder().m(m).build());
 								v.put(":revisionIncrement", REVISION_INCREMENT);
 
-								return routing
+								return clientManager
 									.writableTable()
 									.client()
 									.updateItem(
 										request -> request
-											.tableName(routing.writableTable().name())
+											.tableName(clientManager.writableTable().name())
 											.key(targetKey)
 											.conditionExpression("attribute_not_exists(links)")
 											.updateExpression("SET links = :val ADD revision :revisionIncrement")
@@ -1256,12 +1228,12 @@ public class DynamoDb extends DatabaseDriver {
 					.handle((r, e) -> { // nasty if attribute now exists use first approach again...
 						if (e != null) {
 							if (e.getCause() instanceof ConditionalCheckFailedException) {
-								return routing
+								return clientManager
 									.writableTable()
 									.client()
 									.updateItem(
 										request -> request
-											.tableName(routing.writableTable().name())
+											.tableName(clientManager.writableTable().name())
 											.key(targetKey)
 											.conditionExpression("attribute_exists(links)")
 											.updateExpression("ADD links.#table :val, revision :revisionIncrement")
@@ -1308,19 +1280,19 @@ public class DynamoDb extends DatabaseDriver {
 		String sourceOrganisationId = getSourceOrganisationId(entity);
 		// revision checks don't really work when reading from one env and writing to another, or read from global write to organisation.
 		// revision would only practically be empty if reading object before revision concept is present
-		if (sourceTable.equals(routing.writableTable().name()) && sourceOrganisationId.equals(organisationId) && entity.getRevision() != 0) {
+		if (sourceTable.equals(clientManager.writableTable().name()) && sourceOrganisationId.equals(organisationId) && entity.getRevision() != 0) {
 			values.put(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build());
 			extraConditions = " AND revision = :revision";
 		} else {
 			extraConditions = "";
 		}
 
-		var destination = routing
+		var destination = clientManager
 			.writableTable()
 			.client()
 			.updateItem(
 				request -> request
-					.tableName(routing.writableTable().name())
+					.tableName(clientManager.writableTable().name())
 					.key(key)
 					.conditionExpression("attribute_exists(links)" + extraConditions)
 					.updateExpression("SET links.#table = :val ADD revision :revisionIncrement")
@@ -1335,12 +1307,12 @@ public class DynamoDb extends DatabaseDriver {
 						m.put(targetTable, values.get(":val"));
 						values.put(":val", AttributeValue.builder().m(m).build());
 
-						return routing
+						return clientManager
 							.writableTable()
 							.client()
 							.updateItem(
 								request -> request
-									.tableName(routing.writableTable().name())
+									.tableName(clientManager.writableTable().name())
 									.key(key)
 									.conditionExpression("attribute_not_exists(links)" + extraConditions)
 									.updateExpression("SET links = :val ADD revision :revisionIncrement")
@@ -1357,12 +1329,12 @@ public class DynamoDb extends DatabaseDriver {
 			.handle((r, e) -> {
 				if (e != null) {
 					if (e.getCause() instanceof ConditionalCheckFailedException) {
-						return routing
+						return clientManager
 							.writableTable()
 							.client()
 							.updateItem(
 								request -> request
-									.tableName(routing.writableTable().name())
+									.tableName(clientManager.writableTable().name())
 									.key(key)
 									.conditionExpression("attribute_exists(links)" + extraConditions)
 									.updateExpression("SET links.#table = :val ADD revision :revisionIncrement")
@@ -1435,7 +1407,7 @@ public class DynamoDb extends DatabaseDriver {
 	) {
 		final var updateEntityLinksRequest = createRemoveLinkRequest(organisationId, entity, clazz, targetId);
 
-		return routing
+		return clientManager
 			.writableTable()
 			.client()
 			.updateItem(updateEntityLinksRequest)
@@ -1447,7 +1419,7 @@ public class DynamoDb extends DatabaseDriver {
 
 				final var updateTargetLinksRequest = createRemoveLinkRequest(organisationId, targetEntities.get(0), entity.getClass(), entity.getId());
 
-				return routing.writableTable().client().updateItem(updateTargetLinksRequest);
+				return clientManager.writableTable().client().updateItem(updateTargetLinksRequest);
 			})
 			.thenApply(ignore -> {
 				var links = getLinks(entity).get(table(clazz));
@@ -1485,7 +1457,7 @@ public class DynamoDb extends DatabaseDriver {
 
 		final Map<String, AttributeValue> entityItem = mapWithKeys(organisationId, entity);
 
-		return UpdateItemRequest.builder().tableName(routing.writableTable().name()).key(entityItem).attributeUpdates(linksAttributeMap).build();
+		return UpdateItemRequest.builder().tableName(clientManager.writableTable().name()).key(entityItem).attributeUpdates(linksAttributeMap).build();
 	}
 
 	public <T extends Table> CompletableFuture<T> deleteLinks(String organisationId, T entity) {
@@ -1511,19 +1483,19 @@ public class DynamoDb extends DatabaseDriver {
 		values.put(":val", AttributeValue.builder().m(new HashMap<>()).build());
 		values.put(":revisionIncrement", REVISION_INCREMENT);
 
-		var clearEntity = routing
+		var clearEntity = clientManager
 			.writableTable()
 			.client()
 			.updateItem(
 				request -> request
-					.tableName(routing.writableTable().name())
+					.tableName(clientManager.writableTable().name())
 					.key(sourceKey)
 					.updateExpression("SET links = :val ADD revision :revisionIncrement")
 					.returnValues(ReturnValue.UPDATED_NEW)
 					.applyMutation(mutator -> {
 						String sourceTable = getSourceTable(entity);
 						// revision checks don't really work when reading from one env and writing to another.
-						if (sourceTable != null && !sourceTable.equals(routing.writableTable().name())) {
+						if (sourceTable != null && !sourceTable.equals(clientManager.writableTable().name())) {
 							return;
 						}
 						String sourceOrganisationId = getSourceOrganisationId(entity);
@@ -1578,12 +1550,12 @@ public class DynamoDb extends DatabaseDriver {
 					Map<String, String> k = new HashMap<>();
 					k.put("#table", source);
 
-					return routing
+					return clientManager
 						.writableTable()
 						.client()
 						.updateItem(
 							request -> request
-								.tableName(routing.writableTable().name())
+								.tableName(clientManager.writableTable().name())
 								.key(targetKey)
 								.updateExpression("DELETE links.#table :val ADD revision :revisionIncrement")
 								.expressionAttributeNames(k)
@@ -1605,12 +1577,12 @@ public class DynamoDb extends DatabaseDriver {
 		var keys = Collections.synchronizedList(new ArrayList<Map<String, AttributeValue>>());
 
 		List<CompletableFuture<Void>> hashDeletes = new ArrayList<>();
-		var future = routing
+		var future = clientManager
 			.writableTable()
 			.client()
 			.queryPaginator(
 				builder -> builder
-					.tableName(routing.writableTable().name())
+					.tableName(clientManager.writableTable().name())
 					.projectionExpression("id, organisationId")
 					.keyConditionExpression("organisationId = :organisationId")
 					.expressionAttributeValues(Map.of(":organisationId", AttributeValue.builder().s(organisationId).build()))
@@ -1626,12 +1598,12 @@ public class DynamoDb extends DatabaseDriver {
 							for (var query : extra) {
 								var typeName = TableCoreUtil.table(query.getType());
 
-								var hashFuture = routing
+								var hashFuture = clientManager
 									.writableTable()
 									.client()
 									.queryPaginator(
 										builder -> builder
-											.tableName(routing.writableTable().name())
+											.tableName(clientManager.writableTable().name())
 											.projectionExpression("id, organisationId")
 											.keyConditionExpression("organisationId = :organisationId")
 											.expressionAttributeValues(
@@ -1674,7 +1646,7 @@ public class DynamoDb extends DatabaseDriver {
 				)
 				.stream()
 				.map(deleteRequestBatch -> {
-					return putItems(0, Map.of(routing.writableTable().name(), deleteRequestBatch));
+					return putItems(0, Map.of(clientManager.writableTable().name(), deleteRequestBatch));
 				})
 				.toArray(CompletableFuture[]::new);
 			return CompletableFuture.allOf(all);
@@ -1785,7 +1757,7 @@ public class DynamoDb extends DatabaseDriver {
 
 	@Override
 	protected ScanResult startTableScan(TableScanQuery tableScanQuery, int segment, Object from) {
-		return startTableScan(tableScanQuery, segment, from, routing.writableTable());
+		return startTableScan(tableScanQuery, segment, from, clientManager.writableTable());
 	}
 
 	private ScanResult startTableScan(TableScanQuery tableScanQuery, int segment, Object from, DynamoDbTable table) {
