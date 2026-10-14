@@ -22,7 +22,7 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 /** Client groups in overlay order; the last table receives writes. */
 public final class ClientRouting {
-	public record TableClient(String table, DynamoDbAsyncClient client) {}
+	public record TableClient(String name, DynamoDbAsyncClient client) {}
 
 	private final List<DynamoDbClientManager> clients;
 	private final List<TableClient> tables;
@@ -51,7 +51,7 @@ public final class ClientRouting {
 	}
 
 	public List<String> tableNames() {
-		return tables.stream().map(TableClient::table).toList();
+		return tables.stream().map(TableClient::name).toList();
 	}
 
 	public String writableTable() {

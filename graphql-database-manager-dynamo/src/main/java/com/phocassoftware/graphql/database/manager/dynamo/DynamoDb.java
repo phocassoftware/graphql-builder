@@ -764,13 +764,13 @@ public class DynamoDb extends DatabaseDriver {
 			.client()
 			.queryPaginator(
 				r -> r
-					.tableName(table.table())
+					.tableName(table.name())
 					.indexName("secondaryGlobal")
 					.keyConditionExpression("secondaryGlobal = :secondaryGlobal")
 					.expressionAttributeValues(keyConditions)
 			)
 			.subscribe(response -> {
-				response.items().forEach(item -> toReturn.add(new DynamoItem(table.table(), item)));
+				response.items().forEach(item -> toReturn.add(new DynamoItem(table.name(), item)));
 			})
 			.thenApply(__ -> {
 				return toReturn;
@@ -822,7 +822,7 @@ public class DynamoDb extends DatabaseDriver {
 			.client()
 			.queryPaginator(
 				r -> r
-					.tableName(table.table())
+					.tableName(table.name())
 					.indexName("secondaryOrganisation")
 					.keyConditionExpression("organisationId = :organisationId AND secondaryOrganisation = :secondaryOrganisation")
 					.expressionAttributeValues(keyConditions)
@@ -867,14 +867,14 @@ public class DynamoDb extends DatabaseDriver {
 			}
 		}
 
-		var s = new DynamoQuerySubscriber(table.table(), query.getLimit());
+		var s = new DynamoQuerySubscriber(table.name(), query.getLimit());
 		Boolean finalConsistentRead = consistentRead;
 		String finalIndex = index;
 		table
 			.client()
 			.queryPaginator(r -> {
 				r
-					.tableName(table.table())
+					.tableName(table.name())
 					.indexName(finalIndex)
 					.consistentRead(finalConsistentRead)
 					.expressionAttributeValues(keyConditions)
@@ -1086,7 +1086,7 @@ public class DynamoDb extends DatabaseDriver {
 			.client()
 			.queryPaginator(
 				r -> r
-					.tableName(table.table())
+					.tableName(table.name())
 					.consistentRead(true)
 					.keyConditionExpression("organisationId = :organisationId")
 					.expressionAttributeValues(keyConditions)
@@ -1109,19 +1109,19 @@ public class DynamoDb extends DatabaseDriver {
 										.client()
 										.queryPaginator(
 											builder -> builder
-												.tableName(table.table())
+												.tableName(table.name())
 												.keyConditionExpression("organisationId = :organisationId")
 												.expressionAttributeValues(Map.of(":organisationId", AttributeValue.builder().s(key).build()))
 										)
 										.subscribe(hashResponse -> {
-											hashResponse.items().forEach(i -> toReturn.add(new DynamoBackupItem(table.table(), i, mapper)));
+											hashResponse.items().forEach(i -> toReturn.add(new DynamoBackupItem(table.name(), i, mapper)));
 										});
 									hashAdds.add(hashFuture);
 								}
 							}
 						}
 
-						toReturn.add(new DynamoBackupItem(table.table(), item, mapper));
+						toReturn.add(new DynamoBackupItem(table.name(), item, mapper));
 					});
 			});
 
@@ -1743,7 +1743,7 @@ public class DynamoDb extends DatabaseDriver {
 	}
 
 	private ScanResult startTableScan(TableScanQuery tableScanQuery, int segment, Object from, TableClient table) {
-		var builder = ScanRequest.builder().tableName(table.table()).totalSegments(tableScanQuery.parallelism()).segment(segment);
+		var builder = ScanRequest.builder().tableName(table.name()).totalSegments(tableScanQuery.parallelism()).segment(segment);
 
 		if (from != null) {
 			var startKey = TableUtil.toAttributes(mapper, from);
@@ -1777,7 +1777,7 @@ public class DynamoDb extends DatabaseDriver {
 			}
 			var type = this.classes.get(typeId);
 			if (type != null) {
-				var entity = new DynamoItem(table.table(), item).convertTo(mapper, type);
+				var entity = new DynamoItem(table.name(), item).convertTo(mapper, type);
 
 				var orgIdFinal = organisationId;
 				items
