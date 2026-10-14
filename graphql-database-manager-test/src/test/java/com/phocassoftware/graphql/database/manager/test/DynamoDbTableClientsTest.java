@@ -234,7 +234,16 @@ final class DynamoDbTableClientsTest {
 			groups.clear();
 			var manager = DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientRouting(clients).build();
 
-			assertEquals(List.of("seed", "middle", "overlay"), clients.tables());
+			assertEquals(List.of("seed", "middle", "overlay"), clients.tableNames());
+			assertEquals(
+				List
+					.of(
+						new ClientRouting.TableClient("seed", first),
+						new ClientRouting.TableClient("middle", first),
+						new ClientRouting.TableClient("overlay", second)
+					),
+				clients.tables()
+			);
 			assertEquals("overlay", manager.getVirtualDatabase("org").get(Entry.class, "same-id").getName());
 			assertSame(second, manager.getDynamoDbAsyncClient());
 			assertEquals(2, first.requests.size());
@@ -263,8 +272,8 @@ final class DynamoDbTableClientsTest {
 			names.clear();
 			var first = builder.build();
 			var second = builder.tables(List.of("other")).build();
-			assertEquals(List.of("seed", "overlay"), first.tables());
-			assertEquals(List.of("other"), second.tables());
+			assertEquals(List.of("seed", "overlay"), first.tableNames());
+			assertEquals(List.of("other"), second.tableNames());
 			assertSame(server.asyncClient(), first.writableClient());
 			assertSame(first, ClientRouting.builder().routing(first).build());
 			assertThrows(NullPointerException.class, () -> ClientRouting.builder().build());
@@ -280,7 +289,7 @@ final class DynamoDbTableClientsTest {
 			var names = new ArrayList<>(List.of("seed", "overlay"));
 			var clientManager = ClientRouting.shared(names, server.asyncClient());
 			names.clear();
-			assertEquals(List.of("seed", "overlay"), clientManager.tables());
+			assertEquals(List.of("seed", "overlay"), clientManager.tableNames());
 			assertEquals("overlay", clientManager.writableTable());
 			assertThrows(UnsupportedOperationException.class, () -> clientManager.tables().clear());
 			assertThrows(UnsupportedOperationException.class, () -> clientManager.tables().clear());

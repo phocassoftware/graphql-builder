@@ -12,6 +12,8 @@
 
 package com.phocassoftware.graphql.database.manager.dynamo;
 
+import com.phocassoftware.graphql.database.manager.dynamo.ClientRouting.TableClient;
+
 import static com.phocassoftware.graphql.database.manager.util.TableCoreUtil.table;
 
 import tools.jackson.databind.ObjectMapper;
@@ -579,7 +581,7 @@ public class DynamoDb extends DatabaseDriver {
 		var future = CompletableFutureUtil.sequence(futures);
 
 		return future.thenApply(results -> {
-			var flattener = Flattener.create(routing.tables(), false);
+			var flattener = Flattener.create(routing.tableNames(), false);
 
 			results.forEach(list -> flattener.addItems(list));
 			return flattener.results(mapper, key.getQuery().getType(), Optional.ofNullable(key.getQuery().getLimit()));
@@ -747,28 +749,28 @@ public class DynamoDb extends DatabaseDriver {
 				);
 		}
 		return future.thenApply(results -> {
-			var flattener = Flattener.create(routing.tables(), true);
+			var flattener = Flattener.create(routing.tableNames(), true);
 			results.forEach(list -> flattener.addItems(list));
 			return flattener.results(mapper, type);
 		});
 	}
 
-	private CompletableFuture<List<DynamoItem>> queryGlobal(String table, AttributeValue id) {
+	private CompletableFuture<List<DynamoItem>> queryGlobal(TableClient table, AttributeValue id) {
 		Map<String, AttributeValue> keyConditions = new HashMap<>();
 		keyConditions.put(":secondaryGlobal", id);
 
 		var toReturn = new ArrayList<DynamoItem>();
-		return routing
-			.client(table)
+		return table
+			.client()
 			.queryPaginator(
 				r -> r
-					.tableName(table)
+					.tableName(table.table())
 					.indexName("secondaryGlobal")
 					.keyConditionExpression("secondaryGlobal = :secondaryGlobal")
 					.expressionAttributeValues(keyConditions)
 			)
 			.subscribe(response -> {
-				response.items().forEach(item -> toReturn.add(new DynamoItem(table, item)));
+				response.items().forEach(item -> toReturn.add(new DynamoItem(table.table(), item)));
 			})
 			.thenApply(__ -> {
 				return toReturn;
@@ -810,17 +812,17 @@ public class DynamoDb extends DatabaseDriver {
 		});
 	}
 
-	private CompletableFuture<List<String>> querySecondary(String table, AttributeValue organisationId, AttributeValue id) {
+	private CompletableFuture<List<String>> querySecondary(TableClient table, AttributeValue organisationId, AttributeValue id) {
 		Map<String, AttributeValue> keyConditions = new HashMap<>();
 		keyConditions.put(":organisationId", organisationId);
 		keyConditions.put(":secondaryOrganisation", id);
 
 		var toReturn = new ArrayList<String>();
-		return routing
-			.client(table)
+		return table
+			.client()
 			.queryPaginator(
 				r -> r
-					.tableName(table)
+					.tableName(table.table())
 					.indexName("secondaryOrganisation")
 					.keyConditionExpression("organisationId = :organisationId AND secondaryOrganisation = :secondaryOrganisation")
 					.expressionAttributeValues(keyConditions)
@@ -841,7 +843,7 @@ public class DynamoDb extends DatabaseDriver {
 			});
 	}
 
-	private CompletableFuture<List<DynamoItem>> query(String organisationId, String table, Query<?> query) {
+	private CompletableFuture<List<DynamoItem>> query(String organisationId, TableClient table, Query<?> query) {
 		var keys = mapWithKeys(organisationId, query.getType(), query.getStartsWith());
 		var organisationIdAttribute = keys.get("organisationId");
 		var id = keys.get("id");
@@ -865,14 +867,14 @@ public class DynamoDb extends DatabaseDriver {
 			}
 		}
 
-		var s = new DynamoQuerySubscriber(table, query.getLimit());
+		var s = new DynamoQuerySubscriber(table.table(), query.getLimit());
 		Boolean finalConsistentRead = consistentRead;
 		String finalIndex = index;
-		routing
-			.client(table)
+		table
+			.client()
 			.queryPaginator(r -> {
 				r
-					.tableName(table)
+					.tableName(table.table())
 					.indexName(finalIndex)
 					.consistentRead(finalConsistentRead)
 					.expressionAttributeValues(keyConditions)
@@ -1068,7 +1070,7 @@ public class DynamoDb extends DatabaseDriver {
 		return CompletableFuture.allOf(queries).thenApply(__ -> toReturn);
 	}
 
-	private CompletableFuture<List<BackupItem>> takeBackup(String table, AttributeValue organisationId) {
+	private CompletableFuture<List<BackupItem>> takeBackup(TableClient table, AttributeValue organisationId) {
 		if (hash && hashKeyExpander == null) {
 			throw new UnsupportedOperationException("To perform backups on hashed databases must specify hashLocators");
 		}
@@ -1080,11 +1082,11 @@ public class DynamoDb extends DatabaseDriver {
 		keyConditions.put(":organisationId", organisationId);
 
 		var toReturn = Collections.synchronizedList(new ArrayList<BackupItem>());
-		var future = routing
-			.client(table)
+		var future = table
+			.client()
 			.queryPaginator(
 				r -> r
-					.tableName(table)
+					.tableName(table.table())
 					.consistentRead(true)
 					.keyConditionExpression("organisationId = :organisationId")
 					.expressionAttributeValues(keyConditions)
@@ -1103,23 +1105,23 @@ public class DynamoDb extends DatabaseDriver {
 									var typeName = TableCoreUtil.table(query.getType());
 
 									var key = organisationId.s() + ":" + typeName + ":" + query.getHashId();
-									var hashFuture = routing
-										.client(table)
+									var hashFuture = table
+										.client()
 										.queryPaginator(
 											builder -> builder
-												.tableName(table)
+												.tableName(table.table())
 												.keyConditionExpression("organisationId = :organisationId")
 												.expressionAttributeValues(Map.of(":organisationId", AttributeValue.builder().s(key).build()))
 										)
 										.subscribe(hashResponse -> {
-											hashResponse.items().forEach(i -> toReturn.add(new DynamoBackupItem(table, i, mapper)));
+											hashResponse.items().forEach(i -> toReturn.add(new DynamoBackupItem(table.table(), i, mapper)));
 										});
 									hashAdds.add(hashFuture);
 								}
 							}
 						}
 
-						toReturn.add(new DynamoBackupItem(table, item, mapper));
+						toReturn.add(new DynamoBackupItem(table.table(), item, mapper));
 					});
 			});
 
@@ -1737,18 +1739,18 @@ public class DynamoDb extends DatabaseDriver {
 
 	@Override
 	protected ScanResult startTableScan(TableScanQuery tableScanQuery, int segment, Object from) {
-		return startTableScan(tableScanQuery, segment, from, routing.writableTable());
+		return startTableScan(tableScanQuery, segment, from, routing.tables().getLast());
 	}
 
-	private ScanResult startTableScan(TableScanQuery tableScanQuery, int segment, Object from, String table) {
-		var builder = ScanRequest.builder().tableName(table).totalSegments(tableScanQuery.parallelism()).segment(segment);
+	private ScanResult startTableScan(TableScanQuery tableScanQuery, int segment, Object from, TableClient table) {
+		var builder = ScanRequest.builder().tableName(table.table()).totalSegments(tableScanQuery.parallelism()).segment(segment);
 
 		if (from != null) {
 			var startKey = TableUtil.toAttributes(mapper, from);
 			builder.exclusiveStartKey(startKey);
 		}
 
-		var scan = routing.client(table).scan(builder.build()).join();
+		var scan = table.client().scan(builder.build()).join();
 
 		var items = new ArrayList<ScanResult.Item<?>>();
 		for (var item : scan.items()) {
@@ -1775,7 +1777,7 @@ public class DynamoDb extends DatabaseDriver {
 			}
 			var type = this.classes.get(typeId);
 			if (type != null) {
-				var entity = new DynamoItem(table, item).convertTo(mapper, type);
+				var entity = new DynamoItem(table.table(), item).convertTo(mapper, type);
 
 				var orgIdFinal = organisationId;
 				items

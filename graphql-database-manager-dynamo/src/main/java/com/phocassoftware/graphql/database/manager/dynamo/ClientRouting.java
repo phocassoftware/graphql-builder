@@ -22,12 +22,19 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 /** Client groups in overlay order; the last table receives writes. */
 public final class ClientRouting {
+	public record TableClient(String table, DynamoDbAsyncClient client) {}
+
 	private final List<DynamoDbClientManager> clients;
+	private final List<TableClient> tables;
 
 	public ClientRouting(List<DynamoDbClientManager> clients) {
 		this.clients = List.copyOf(clients);
 		Preconditions.checkArgument(!this.clients.isEmpty(), "Empty client array");
-		var tables = tables();
+		this.tables = this.clients
+			.stream()
+			.flatMap(manager -> manager.tables().stream().map(table -> new TableClient(table, manager.client())))
+			.toList();
+		var tables = tableNames();
 		Preconditions.checkArgument(tables.stream().distinct().count() == tables.size(), "Table client names must be unique");
 	}
 
@@ -39,8 +46,12 @@ public final class ClientRouting {
 		return clients;
 	}
 
-	public List<String> tables() {
-		return clients.stream().flatMap(manager -> manager.tables().stream()).toList();
+	public List<TableClient> tables() {
+		return tables;
+	}
+
+	public List<String> tableNames() {
+		return tables.stream().map(TableClient::table).toList();
 	}
 
 	public String writableTable() {
@@ -51,17 +62,8 @@ public final class ClientRouting {
 		return clients.getLast().client();
 	}
 
-	public DynamoDbAsyncClient client(String table) {
-		return clients
-			.stream()
-			.filter(manager -> manager.tables().contains(table))
-			.findFirst()
-			.orElseThrow(() -> new IllegalArgumentException("Unknown table: " + table))
-			.client();
-	}
-
 	CompletableFuture<Flattener> getItems(List<Map<String, AttributeValue>> entries, int maxRetry) {
-		var result = CompletableFuture.completedFuture(Flattener.create(tables(), false));
+		var result = CompletableFuture.completedFuture(Flattener.create(tableNames(), false));
 		for (var manager : clients) {
 			result = result.thenCompose(flattener -> manager.getItems(entries, flattener, maxRetry));
 		}
