@@ -20,7 +20,6 @@ import com.google.common.base.Strings;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
@@ -30,13 +29,13 @@ public final class DynamoDbManager extends DatabaseManager {
 
 	private final ObjectMapper mapper;
 	private final Supplier<String> idGenerator;
-	private final DynamoDbAsyncClient client;
+	private final ClientRouting routing;
 
-	private DynamoDbManager(ObjectMapper mapper, Supplier<String> idGenerator, DynamoDbAsyncClient client, DatabaseDriver dynamoDb) {
+	private DynamoDbManager(ObjectMapper mapper, Supplier<String> idGenerator, ClientRouting routing, DatabaseDriver dynamoDb) {
 		super(dynamoDb);
 		this.mapper = mapper;
 		this.idGenerator = idGenerator;
-		this.client = client;
+		this.routing = routing;
 	}
 
 	public static DyanmoDbManagerBuilder builder() {
@@ -45,9 +44,8 @@ public final class DynamoDbManager extends DatabaseManager {
 
 	public static class DyanmoDbManagerBuilder {
 
-		private DynamoDbAsyncClient client;
+		private final ClientRouting.Builder routing = ClientRouting.builder();
 		private ObjectMapper mapper;
-		private List<String> tables;
 		private Supplier<String> idGenerator;
 		private DatabaseDriver database;
 		private String historyTable;
@@ -60,7 +58,7 @@ public final class DynamoDbManager extends DatabaseManager {
 		private String parallelIndex = null;
 
 		public DyanmoDbManagerBuilder dynamoDbAsyncClient(DynamoDbAsyncClient client) {
-			this.client = client;
+			routing.client(client);
 			return this;
 		}
 
@@ -70,12 +68,16 @@ public final class DynamoDbManager extends DatabaseManager {
 		}
 
 		public DyanmoDbManagerBuilder tables(List<String> tables) {
-			this.tables = tables;
+			routing.tables(tables);
 			return this;
 		}
 
 		public DyanmoDbManagerBuilder tables(String... tables) {
-			this.tables = Arrays.asList(tables);
+			return tables(Arrays.asList(tables));
+		}
+
+		public DyanmoDbManagerBuilder clientRouting(ClientRouting routing) {
+			this.routing.routing(routing);
 			return this;
 		}
 
@@ -130,24 +132,28 @@ public final class DynamoDbManager extends DatabaseManager {
 		}
 
 		public DynamoDbManager build() {
-			Preconditions.checkNotNull(tables, "Tables must be set");
-			Preconditions.checkArgument(!tables.isEmpty(), "Empty table array");
 			Preconditions.checkNotNull(mapper, "Mapper is null");
-
-			if (client == null) {
-				client = DynamoDbAsyncClient.create();
-			}
+			var resolvedRouting = routing.build();
 			if (idGenerator == null) {
 				idGenerator = () -> UUID.randomUUID().toString();
 			}
 
-			database = Objects
-				.requireNonNullElse(
-					database,
-					new DynamoDb(mapper, tables, historyTable, client, idGenerator, batchWriteSize, maxRetry, globalEnabled, hash, classPath, parallelIndex)
+			if (database == null) {
+				database = new DynamoDb(
+					mapper,
+					resolvedRouting,
+					historyTable,
+					idGenerator,
+					batchWriteSize,
+					maxRetry,
+					globalEnabled,
+					hash,
+					classPath,
+					parallelIndex
 				);
+			}
 
-			return new DynamoDbManager(mapper, idGenerator, client, database);
+			return new DynamoDbManager(mapper, idGenerator, resolvedRouting, database);
 		}
 	}
 
@@ -173,6 +179,6 @@ public final class DynamoDbManager extends DatabaseManager {
 	}
 
 	public DynamoDbAsyncClient getDynamoDbAsyncClient() {
-		return client;
+		return routing.writableClient();
 	}
 }
