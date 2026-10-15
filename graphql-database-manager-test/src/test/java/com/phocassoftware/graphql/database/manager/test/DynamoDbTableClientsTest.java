@@ -142,6 +142,20 @@ final class DynamoDbTableClientsTest {
 	}
 
 	@Test
+	void localOverlayDeletionDoesNotDependOnTableCount() throws Exception {
+		try (var server = LocalDynamoDbServer.start()) {
+			server.createEntityTable("overlay");
+			var overlay = manager(true, new DynamoDbClientManager(List.of("overlay"), server.asyncClient())).getVirtualDatabase("org");
+			var created = overlay.put(new Entry("local only"));
+			overlay.delete(created, true);
+
+			var items = server.client().scan(request -> request.tableName("overlay")).items();
+			assertEquals(1, items.size());
+			assertTrue(items.getFirst().get("deleted").bool());
+		}
+	}
+
+	@Test
 	void legacyBuilderRoutesSeedAndWritableTablesWithEitherSetterOrder() throws Exception {
 		try (var server = LocalDynamoDbServer.start()) {
 			server.createEntityTable("seed");
@@ -208,7 +222,6 @@ final class DynamoDbTableClientsTest {
 				assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().clientRouting(new ClientRouting(tables)));
 				assertThrows(IllegalArgumentException.class, () -> new ClientRouting(tables));
 			}
-			assertThrows(IllegalArgumentException.class, () -> ClientRouting.localOverlay(List.of(table)));
 		}
 	}
 

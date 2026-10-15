@@ -227,7 +227,7 @@ public class DynamoDb extends DatabaseDriver {
 		}
 
 		String sourceTable = getSourceTable(entity);
-		if (sourceTable.equals(routing.writableTable()) && !routing.retainOverlayDeletes()) {
+		if (sourceTable.equals(routing.writableTable()) && !(routing instanceof ClientRouting.LocalOverlayRouting)) {
 			Map<String, AttributeValue> key = mapWithKeys(organisationId, entity);
 
 			return routing
