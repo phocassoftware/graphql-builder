@@ -227,11 +227,10 @@ public class DynamoDb extends DatabaseDriver {
 		}
 
 		String sourceTable = getSourceTable(entity);
-		CompletableFuture<?> deletion;
 		if (sourceTable.equals(routing.writableTable()) && !routing.clients().getLast().tombstoneDeletes()) {
 			Map<String, AttributeValue> key = mapWithKeys(organisationId, entity);
 
-			deletion = routing
+			return routing
 				.writableClient()
 				.deleteItem(
 					request -> request
@@ -252,13 +251,23 @@ public class DynamoDb extends DatabaseDriver {
 								mutator.conditionExpression("revision = :revision");
 							}
 						})
-				);
+				)
+				.thenApply(response -> {
+					return entity;
+				})
+				.exceptionally(failure -> {
+					if (failure.getCause() instanceof ConditionalCheckFailedException) {
+						throw new RevisionMismatchException(failure.getCause());
+					}
+					Throwables.throwIfUnchecked(failure);
+					throw new RuntimeException(failure);
+				});
 		} else {
 			// Keep the seed hidden after removing a local override.
 			Map<String, AttributeValue> item = mapWithKeys(organisationId, entity, true);
 			item.put("deleted", AttributeValue.builder().bool(true).build());
 
-			deletion = routing
+			return routing
 				.writableClient()
 				.putItem(request -> request.tableName(routing.writableTable()).item(item).applyMutation(mutator -> {
 					if (sourceTable.equals(routing.writableTable())) {
@@ -269,15 +278,18 @@ public class DynamoDb extends DatabaseDriver {
 							mutator.conditionExpression("revision = :revision");
 						}
 					}
-				}));
+				}))
+				.thenApply(response -> {
+					return entity;
+				})
+				.exceptionally(failure -> {
+					if (failure.getCause() instanceof ConditionalCheckFailedException) {
+						throw new RevisionMismatchException(failure.getCause());
+					}
+					Throwables.throwIfUnchecked(failure);
+					throw new RuntimeException(failure);
+				});
 		}
-		return deletion.thenApply(response -> entity).exceptionally(failure -> {
-			if (failure.getCause() instanceof ConditionalCheckFailedException) {
-				throw new RevisionMismatchException(failure.getCause());
-			}
-			Throwables.throwIfUnchecked(failure);
-			throw new RuntimeException(failure);
-		});
 	}
 
 	private CompletableFuture<?> conditionalBulkWrite(List<PutValue> items) {
