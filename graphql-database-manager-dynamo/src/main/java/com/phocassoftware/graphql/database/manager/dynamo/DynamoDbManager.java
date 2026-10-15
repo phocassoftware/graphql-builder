@@ -53,7 +53,6 @@ public final class DynamoDbManager extends DatabaseManager {
 		private int maxRetry = 10;
 		private boolean globalEnabled = true;
 		private boolean hash = false;
-		private boolean retainOverlayDeletes = false;
 		private String classPath = null;
 
 		private String parallelIndex = null;
@@ -120,12 +119,6 @@ public final class DynamoDbManager extends DatabaseManager {
 			return this;
 		}
 
-		/** Opt in for local overlays whose deletions must keep hiding seed rows; defaults to false. */
-		public DyanmoDbManagerBuilder retainOverlayDeletes(boolean retainOverlayDeletes) {
-			this.retainOverlayDeletes = retainOverlayDeletes;
-			return this;
-		}
-
 		public DyanmoDbManagerBuilder classPath(String classPath) {
 			if (!Strings.isNullOrEmpty(classPath)) {
 				this.classPath = classPath;
@@ -156,8 +149,7 @@ public final class DynamoDbManager extends DatabaseManager {
 					globalEnabled,
 					hash,
 					classPath,
-					parallelIndex,
-					retainOverlayDeletes
+					parallelIndex
 				);
 			}
 

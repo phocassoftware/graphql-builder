@@ -74,8 +74,6 @@ import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.DeleteRequest;
-import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest.Builder;
 import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
@@ -97,7 +95,6 @@ public class DynamoDb extends DatabaseDriver {
 	private final int maxRetry;
 	private final boolean globalEnabled;
 	private final boolean hash;
-	private final boolean retainOverlayDeletes;
 	private final String classPath;
 
 	private final String parallelHashIndex;
@@ -166,23 +163,6 @@ public class DynamoDb extends DatabaseDriver {
 		String classPath,
 		String parallelHashIndex
 	) {
-		this(mapper, routing, historyTable, idGenerator, batchWriteSize, maxRetry, globalEnabled, hash, classPath, parallelHashIndex, false);
-	}
-
-	DynamoDb(
-		ObjectMapper mapper,
-		ClientRouting routing,
-		String historyTable,
-		Supplier<String> idGenerator,
-		int batchWriteSize,
-		int maxRetry,
-		boolean globalEnabled,
-		boolean hash,
-		String classPath,
-		String parallelHashIndex,
-		boolean retainOverlayDeletes
-	) {
-		this.retainOverlayDeletes = retainOverlayDeletes;
 		this.mapper = mapper;
 		this.routing = routing;
 		this.historyTable = historyTable;
@@ -246,48 +226,51 @@ public class DynamoDb extends DatabaseDriver {
 			return CompletableFuture.completedFuture(entity);
 		}
 
-		boolean writableEntity = getSourceTable(entity).equals(routing.writableTable());
-		boolean retainTombstone = !writableEntity || (retainOverlayDeletes && routing.tables().size() > 1);
-		String condition = null;
-		Map<String, AttributeValue> values = null;
-		if (writableEntity) {
-			if (entity.getRevision() == 0) {
-				condition = "attribute_not_exists(revision)";
-			} else {
-				condition = "revision = :revision";
-				values = Map.of(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build());
-			}
-		}
-
+		String sourceTable = getSourceTable(entity);
 		CompletableFuture<?> deletion;
-		if (retainTombstone) {
-			var item = mapWithKeys(organisationId, entity, true);
-			item.put("deleted", AttributeValue.builder().bool(true).build());
-			deletion = routing
-				.writableClient()
-				.putItem(
-					PutItemRequest
-						.builder()
-						.tableName(routing.writableTable())
-						.item(item)
-						.conditionExpression(condition)
-						.expressionAttributeValues(values)
-						.build()
-				);
-		} else {
+		if (sourceTable.equals(routing.writableTable()) && !routing.clients().getLast().tombstoneDeletes()) {
+			Map<String, AttributeValue> key = mapWithKeys(organisationId, entity);
+
 			deletion = routing
 				.writableClient()
 				.deleteItem(
-					DeleteItemRequest
-						.builder()
+					request -> request
 						.tableName(routing.writableTable())
-						.key(mapWithKeys(organisationId, entity))
-						.conditionExpression(condition)
-						.expressionAttributeValues(values)
-						.build()
+						.key(key)
+						.applyMutation(mutator -> {
+							String sourceOrganisationId = getSourceOrganisationId(entity);
+							if (!sourceOrganisationId.equals(organisationId)) {
+								return;
+							}
+							if (entity.getRevision() == 0) { // we confirm row does not exist with a revision since entry might predate feature
+								mutator.conditionExpression("attribute_not_exists(revision)");
+							} else {
+								Map<String, AttributeValue> variables = new HashMap<>();
+								variables.put(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build());
+								// check exists and matches revision
+								mutator.expressionAttributeValues(variables);
+								mutator.conditionExpression("revision = :revision");
+							}
+						})
 				);
-		}
+		} else {
+			// Keep the seed hidden after removing a local override.
+			Map<String, AttributeValue> item = mapWithKeys(organisationId, entity, true);
+			item.put("deleted", AttributeValue.builder().bool(true).build());
 
+			deletion = routing
+				.writableClient()
+				.putItem(request -> request.tableName(routing.writableTable()).item(item).applyMutation(mutator -> {
+					if (sourceTable.equals(routing.writableTable())) {
+						if (entity.getRevision() == 0) {
+							mutator.conditionExpression("attribute_not_exists(revision)");
+						} else {
+							mutator.expressionAttributeValues(Map.of(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build()));
+							mutator.conditionExpression("revision = :revision");
+						}
+					}
+				}));
+		}
 		return deletion.thenApply(response -> entity).exceptionally(failure -> {
 			if (failure.getCause() instanceof ConditionalCheckFailedException) {
 				throw new RevisionMismatchException(failure.getCause());

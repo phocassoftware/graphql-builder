@@ -24,7 +24,16 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.KeysAndAttributes;
 
 /** One client and the ordered tables fetched together through it. */
-public record DynamoDbClientManager(List<String> tables, DynamoDbAsyncClient client) {
+public record DynamoDbClientManager(List<String> tables, DynamoDbAsyncClient client, boolean tombstoneDeletes) {
+	public DynamoDbClientManager(List<String> tables, DynamoDbAsyncClient client) {
+		this(tables, client, false);
+	}
+
+	/** Local overlay writes retain deletion markers to hide seed entities. */
+	public static DynamoDbClientManager localOverlay(String table, DynamoDbAsyncClient client) {
+		return new DynamoDbClientManager(List.of(table), client, true);
+	}
+
 	public DynamoDbClientManager {
 		Objects.requireNonNull(client, "client");
 		tables = List.copyOf(tables);
