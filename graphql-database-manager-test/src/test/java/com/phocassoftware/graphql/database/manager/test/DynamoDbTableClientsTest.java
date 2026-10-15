@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import tools.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.Table;
+import com.phocassoftware.graphql.database.manager.RevisionMismatchException;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbClientManager;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDb;
@@ -27,11 +28,14 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 import software.amazon.awssdk.services.dynamodb.model.BatchGetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.BatchGetItemResponse;
 import com.phocassoftware.graphql.database.manager.dynamo.ClientRouting;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 final class DynamoDbTableClientsTest {
 	@Test
@@ -69,6 +73,49 @@ final class DynamoDbTableClientsTest {
 			var reloadedSeed = seedManager.getVirtualDatabase("org");
 			assertEquals("original", reloadedSeed.get(Entry.class, updated.getId()).getName());
 			assertTrue(reloadedSeed.getOptional(Entry.class, deleted.getId()).isPresent());
+			assertFalse(reloadedSeed.getOptional(Entry.class, created.getId()).isPresent());
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(booleans = { false, true })
+	void deletingUpdatedSeedKeepsItHidden(boolean separateClients) throws Exception {
+		try (var seedServer = LocalDynamoDbServer.start(); var localServer = LocalDynamoDbServer.start()) {
+			var writableServer = separateClients ? localServer : seedServer;
+			seedServer.createEntityTable("seed");
+			writableServer.createEntityTable("overlay");
+			var seedClient = new DynamoDbClientManager(List.of("seed"), seedServer.asyncClient());
+			var localClient = new DynamoDbClientManager(List.of("overlay"), writableServer.asyncClient());
+			var seed = manager(seedClient).getVirtualDatabase("org");
+			var overlay = manager(seedClient, localClient).getVirtualDatabase("org");
+			var original = seed.put(new Entry("original"));
+			var untouched = seed.put(new Entry("untouched"));
+			var changed = overlay.get(Entry.class, original.getId());
+			changed.setName("local");
+			overlay.put(changed);
+			var stale = overlay.get(Entry.class, original.getId());
+			var current = manager(seedClient, localClient).getVirtualDatabase("org").get(Entry.class, original.getId());
+			current.setName("latest");
+			overlay.put(current);
+
+			var failure = assertThrows(CompletionException.class, () -> overlay.delete(stale, true));
+			assertTrue(failure.getCause() instanceof RevisionMismatchException);
+			assertEquals("latest", overlay.get(Entry.class, original.getId()).getName());
+
+			overlay.delete(overlay.get(Entry.class, original.getId()), true);
+			overlay.delete(overlay.get(Entry.class, untouched.getId()), true);
+			var created = overlay.put(new Entry("local only"));
+			overlay.delete(created, true);
+
+			var reloaded = manager(seedClient, localClient).getVirtualDatabase("org");
+			assertFalse(reloaded.getOptional(Entry.class, original.getId()).isPresent());
+			assertFalse(reloaded.getOptional(Entry.class, untouched.getId()).isPresent());
+			assertFalse(reloaded.getOptional(Entry.class, created.getId()).isPresent());
+			assertTrue(reloaded.query(Entry.class).isEmpty());
+			var reloadedSeed = manager(seedClient).getVirtualDatabase("org");
+			assertEquals("original", reloadedSeed.get(Entry.class, original.getId()).getName());
+			assertEquals(original.getRevision(), reloadedSeed.get(Entry.class, original.getId()).getRevision());
+			assertTrue(reloadedSeed.getOptional(Entry.class, untouched.getId()).isPresent());
 			assertFalse(reloadedSeed.getOptional(Entry.class, created.getId()).isPresent());
 		}
 	}

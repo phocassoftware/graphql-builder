@@ -227,7 +227,7 @@ public class DynamoDb extends DatabaseDriver {
 		}
 
 		String sourceTable = getSourceTable(entity);
-		if (sourceTable.equals(routing.writableTable())) {
+		if (sourceTable.equals(routing.writableTable()) && routing.tables().size() == 1) {
 			Map<String, AttributeValue> key = mapWithKeys(organisationId, entity);
 
 			return routing
@@ -263,15 +263,29 @@ public class DynamoDb extends DatabaseDriver {
 					throw new RuntimeException(failure);
 				});
 		} else {
-			// we mark as deleted not actual delete
+			// Retain a tombstone so deleting a local override cannot expose a seed row.
 			Map<String, AttributeValue> item = mapWithKeys(organisationId, entity, true);
 			item.put("deleted", AttributeValue.builder().bool(true).build());
 
 			return routing
 				.writableClient()
-				.putItem(request -> request.tableName(routing.writableTable()).item(item))
-				.thenApply(response -> {
-					return entity;
+				.putItem(request -> request.tableName(routing.writableTable()).item(item).applyMutation(mutator -> {
+					if (sourceTable.equals(routing.writableTable())) {
+						if (entity.getRevision() == 0) {
+							mutator.conditionExpression("attribute_not_exists(revision)");
+						} else {
+							mutator.expressionAttributeValues(Map.of(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build()));
+							mutator.conditionExpression("revision = :revision");
+						}
+					}
+				}))
+				.thenApply(response -> entity)
+				.exceptionally(failure -> {
+					if (failure.getCause() instanceof ConditionalCheckFailedException) {
+						throw new RevisionMismatchException(failure.getCause());
+					}
+					Throwables.throwIfUnchecked(failure);
+					throw new RuntimeException(failure);
 				});
 		}
 	}
