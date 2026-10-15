@@ -85,16 +85,16 @@ final class DynamoDbTableClientsTest {
 			seedServer.createEntityTable("seed");
 			writableServer.createEntityTable("overlay");
 			var seedClient = new DynamoDbClientManager(List.of("seed"), seedServer.asyncClient());
-			var localClient = DynamoDbClientManager.localOverlay("overlay", writableServer.asyncClient());
+			var localClient = new DynamoDbClientManager(List.of("overlay"), writableServer.asyncClient());
 			var seed = manager(seedClient).getVirtualDatabase("org");
-			var overlay = manager(seedClient, localClient).getVirtualDatabase("org");
+			var overlay = manager(true, seedClient, localClient).getVirtualDatabase("org");
 			var original = seed.put(new Entry("original"));
 			var untouched = seed.put(new Entry("untouched"));
 			var changed = overlay.get(Entry.class, original.getId());
 			changed.setName("local");
 			overlay.put(changed);
 			var stale = overlay.get(Entry.class, original.getId());
-			var current = manager(seedClient, localClient).getVirtualDatabase("org").get(Entry.class, original.getId());
+			var current = manager(true, seedClient, localClient).getVirtualDatabase("org").get(Entry.class, original.getId());
 			current.setName("latest");
 			overlay.put(current);
 
@@ -107,7 +107,7 @@ final class DynamoDbTableClientsTest {
 			var created = overlay.put(new Entry("local only"));
 			overlay.delete(created, true);
 
-			var reloaded = manager(seedClient, localClient).getVirtualDatabase("org");
+			var reloaded = manager(true, seedClient, localClient).getVirtualDatabase("org");
 			assertFalse(reloaded.getOptional(Entry.class, original.getId()).isPresent());
 			assertFalse(reloaded.getOptional(Entry.class, untouched.getId()).isPresent());
 			assertFalse(reloaded.getOptional(Entry.class, created.getId()).isPresent());
@@ -400,7 +400,16 @@ final class DynamoDbTableClientsTest {
 	}
 
 	private static DynamoDbManager manager(DynamoDbClientManager... tables) {
-		return DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientRouting(new ClientRouting(List.of(tables))).build();
+		return manager(false, tables);
+	}
+
+	private static DynamoDbManager manager(boolean retainOverlayDeletes, DynamoDbClientManager... tables) {
+		return DynamoDbManager
+			.builder()
+			.objectMapper(new ObjectMapper())
+			.clientRouting(new ClientRouting(List.of(tables)))
+			.retainOverlayDeletes(retainOverlayDeletes)
+			.build();
 	}
 
 	static class Entry extends Table {
