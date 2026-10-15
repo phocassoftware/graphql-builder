@@ -74,6 +74,8 @@ import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.BatchWriteItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.DeleteRequest;
+import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest.Builder;
 import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
@@ -244,68 +246,55 @@ public class DynamoDb extends DatabaseDriver {
 			return CompletableFuture.completedFuture(entity);
 		}
 
-		String sourceTable = getSourceTable(entity);
-		if (sourceTable.equals(routing.writableTable()) && (!retainOverlayDeletes || routing.tables().size() == 1)) {
-			Map<String, AttributeValue> key = mapWithKeys(organisationId, entity);
+		boolean writableEntity = getSourceTable(entity).equals(routing.writableTable());
+		boolean retainTombstone = !writableEntity || (retainOverlayDeletes && routing.tables().size() > 1);
+		String condition = null;
+		Map<String, AttributeValue> values = null;
+		if (writableEntity) {
+			if (entity.getRevision() == 0) {
+				condition = "attribute_not_exists(revision)";
+			} else {
+				condition = "revision = :revision";
+				values = Map.of(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build());
+			}
+		}
 
-			return routing
+		CompletableFuture<?> deletion;
+		if (retainTombstone) {
+			var item = mapWithKeys(organisationId, entity, true);
+			item.put("deleted", AttributeValue.builder().bool(true).build());
+			deletion = routing
+				.writableClient()
+				.putItem(
+					PutItemRequest
+						.builder()
+						.tableName(routing.writableTable())
+						.item(item)
+						.conditionExpression(condition)
+						.expressionAttributeValues(values)
+						.build()
+				);
+		} else {
+			deletion = routing
 				.writableClient()
 				.deleteItem(
-					request -> request
+					DeleteItemRequest
+						.builder()
 						.tableName(routing.writableTable())
-						.key(key)
-						.applyMutation(mutator -> {
-							String sourceOrganisationId = getSourceOrganisationId(entity);
-							if (!sourceOrganisationId.equals(organisationId)) {
-								return;
-							}
-							if (entity.getRevision() == 0) { // we confirm row does not exist with a revision since entry might predate feature
-								mutator.conditionExpression("attribute_not_exists(revision)");
-							} else {
-								Map<String, AttributeValue> variables = new HashMap<>();
-								variables.put(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build());
-								// check exists and matches revision
-								mutator.expressionAttributeValues(variables);
-								mutator.conditionExpression("revision = :revision");
-							}
-						})
-				)
-				.thenApply(response -> {
-					return entity;
-				})
-				.exceptionally(failure -> {
-					if (failure.getCause() instanceof ConditionalCheckFailedException) {
-						throw new RevisionMismatchException(failure.getCause());
-					}
-					Throwables.throwIfUnchecked(failure);
-					throw new RuntimeException(failure);
-				});
-		} else {
-			// Retain a tombstone so deleting a local override cannot expose a seed row.
-			Map<String, AttributeValue> item = mapWithKeys(organisationId, entity, true);
-			item.put("deleted", AttributeValue.builder().bool(true).build());
-
-			return routing
-				.writableClient()
-				.putItem(request -> request.tableName(routing.writableTable()).item(item).applyMutation(mutator -> {
-					if (sourceTable.equals(routing.writableTable())) {
-						if (entity.getRevision() == 0) {
-							mutator.conditionExpression("attribute_not_exists(revision)");
-						} else {
-							mutator.expressionAttributeValues(Map.of(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build()));
-							mutator.conditionExpression("revision = :revision");
-						}
-					}
-				}))
-				.thenApply(response -> entity)
-				.exceptionally(failure -> {
-					if (failure.getCause() instanceof ConditionalCheckFailedException) {
-						throw new RevisionMismatchException(failure.getCause());
-					}
-					Throwables.throwIfUnchecked(failure);
-					throw new RuntimeException(failure);
-				});
+						.key(mapWithKeys(organisationId, entity))
+						.conditionExpression(condition)
+						.expressionAttributeValues(values)
+						.build()
+				);
 		}
+
+		return deletion.thenApply(response -> entity).exceptionally(failure -> {
+			if (failure.getCause() instanceof ConditionalCheckFailedException) {
+				throw new RevisionMismatchException(failure.getCause());
+			}
+			Throwables.throwIfUnchecked(failure);
+			throw new RuntimeException(failure);
+		});
 	}
 
 	private CompletableFuture<?> conditionalBulkWrite(List<PutValue> items) {
