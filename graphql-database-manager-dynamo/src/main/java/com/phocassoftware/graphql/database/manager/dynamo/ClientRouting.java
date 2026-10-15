@@ -26,6 +26,7 @@ public sealed class ClientRouting permits ClientRouting.LocalOverlayRouting {
 
 	private final List<DynamoDbClientManager> clients;
 	private final List<TableClient> tables;
+
 	public ClientRouting(List<DynamoDbClientManager> clients) {
 		this.clients = List.copyOf(clients);
 		Preconditions.checkArgument(!this.clients.isEmpty(), "Empty client array");
