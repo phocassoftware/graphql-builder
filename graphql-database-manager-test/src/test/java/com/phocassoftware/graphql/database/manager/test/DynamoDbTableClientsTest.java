@@ -87,14 +87,14 @@ final class DynamoDbTableClientsTest {
 			var seedClient = new DynamoDbClientManager(List.of("seed"), seedServer.asyncClient());
 			var localClient = new DynamoDbClientManager(List.of("overlay"), writableServer.asyncClient());
 			var seed = manager(seedClient).getVirtualDatabase("org");
-			var overlay = manager(seedClient, localClient).getVirtualDatabase("org");
+			var overlay = localOverlayManager(seedClient, localClient).getVirtualDatabase("org");
 			var original = seed.put(new Entry("original"));
 			var untouched = seed.put(new Entry("untouched"));
 			var changed = overlay.get(Entry.class, original.getId());
 			changed.setName("local");
 			overlay.put(changed);
 			var stale = overlay.get(Entry.class, original.getId());
-			var current = manager(seedClient, localClient).getVirtualDatabase("org").get(Entry.class, original.getId());
+			var current = localOverlayManager(seedClient, localClient).getVirtualDatabase("org").get(Entry.class, original.getId());
 			current.setName("latest");
 			overlay.put(current);
 
@@ -107,7 +107,7 @@ final class DynamoDbTableClientsTest {
 			var created = overlay.put(new Entry("local only"));
 			overlay.delete(created, true);
 
-			var reloaded = manager(seedClient, localClient).getVirtualDatabase("org");
+			var reloaded = localOverlayManager(seedClient, localClient).getVirtualDatabase("org");
 			assertFalse(reloaded.getOptional(Entry.class, original.getId()).isPresent());
 			assertFalse(reloaded.getOptional(Entry.class, untouched.getId()).isPresent());
 			assertFalse(reloaded.getOptional(Entry.class, created.getId()).isPresent());
@@ -117,6 +117,27 @@ final class DynamoDbTableClientsTest {
 			assertEquals(original.getRevision(), reloadedSeed.get(Entry.class, original.getId()).getRevision());
 			assertTrue(reloadedSeed.getOptional(Entry.class, untouched.getId()).isPresent());
 			assertFalse(reloadedSeed.getOptional(Entry.class, created.getId()).isPresent());
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(booleans = { false, true })
+	void defaultDeletionStillRemovesWritableOverride(boolean separateClients) throws Exception {
+		try (var seedServer = LocalDynamoDbServer.start(); var localServer = LocalDynamoDbServer.start()) {
+			var writableServer = separateClients ? localServer : seedServer;
+			seedServer.createEntityTable("seed");
+			writableServer.createEntityTable("overlay");
+			var seedClient = new DynamoDbClientManager(List.of("seed"), seedServer.asyncClient());
+			var writableClient = new DynamoDbClientManager(List.of("overlay"), writableServer.asyncClient());
+			var original = manager(seedClient).getVirtualDatabase("org").put(new Entry("seed"));
+			var overlay = manager(seedClient, writableClient).getVirtualDatabase("org");
+			var changed = overlay.get(Entry.class, original.getId());
+			changed.setName("override");
+			overlay.put(changed);
+			overlay.delete(overlay.get(Entry.class, original.getId()), true);
+
+			assertFalse(manager(writableClient).getVirtualDatabase("org").getOptional(Entry.class, original.getId()).isPresent());
+			assertEquals("seed", manager(seedClient, writableClient).getVirtualDatabase("org").get(Entry.class, original.getId()).getName());
 		}
 	}
 
@@ -376,6 +397,10 @@ final class DynamoDbTableClientsTest {
 
 		@Override
 		public void close() {}
+	}
+
+	private static DynamoDbManager localOverlayManager(DynamoDbClientManager... tables) {
+		return DynamoDbManager.builder().objectMapper(new ObjectMapper()).clientRouting(new ClientRouting(List.of(tables))).retainOverlayDeletes(true).build();
 	}
 
 	private static DynamoDbManager manager(DynamoDbClientManager... tables) {
