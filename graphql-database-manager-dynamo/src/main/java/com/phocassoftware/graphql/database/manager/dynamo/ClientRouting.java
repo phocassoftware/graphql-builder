@@ -26,8 +26,13 @@ public final class ClientRouting {
 
 	private final List<DynamoDbClientManager> clients;
 	private final List<TableClient> tables;
+	private final boolean retainOverlayDeletes;
 
 	public ClientRouting(List<DynamoDbClientManager> clients) {
+		this(clients, false);
+	}
+
+	private ClientRouting(List<DynamoDbClientManager> clients, boolean retainOverlayDeletes) {
 		this.clients = List.copyOf(clients);
 		Preconditions.checkArgument(!this.clients.isEmpty(), "Empty client array");
 		this.tables = this.clients
@@ -36,6 +41,13 @@ public final class ClientRouting {
 			.toList();
 		var tables = tableNames();
 		Preconditions.checkArgument(tables.stream().distinct().count() == tables.size(), "Table client names must be unique");
+		Preconditions.checkArgument(!retainOverlayDeletes || tables.size() > 1, "Local overlay requires multiple tables");
+		this.retainOverlayDeletes = retainOverlayDeletes;
+	}
+
+	/** Retain deletion markers in the writable table to keep seed entities hidden. */
+	public static ClientRouting localOverlay(List<DynamoDbClientManager> clients) {
+		return new ClientRouting(clients, true);
 	}
 
 	public static ClientRouting shared(List<String> tables, DynamoDbAsyncClient client) {
@@ -60,6 +72,10 @@ public final class ClientRouting {
 
 	public DynamoDbAsyncClient writableClient() {
 		return clients.getLast().client();
+	}
+
+	boolean retainOverlayDeletes() {
+		return retainOverlayDeletes;
 	}
 
 	CompletableFuture<Flattener> getItems(List<Map<String, AttributeValue>> entries, int maxRetry) {

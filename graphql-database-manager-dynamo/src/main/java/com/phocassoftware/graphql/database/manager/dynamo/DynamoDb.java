@@ -95,7 +95,6 @@ public class DynamoDb extends DatabaseDriver {
 	private final int maxRetry;
 	private final boolean globalEnabled;
 	private final boolean hash;
-	private final boolean retainOverlayDeletes;
 	private final String classPath;
 
 	private final String parallelHashIndex;
@@ -164,25 +163,8 @@ public class DynamoDb extends DatabaseDriver {
 		String classPath,
 		String parallelHashIndex
 	) {
-		this(mapper, routing, historyTable, idGenerator, batchWriteSize, maxRetry, globalEnabled, hash, classPath, parallelHashIndex, false);
-	}
-
-	DynamoDb(
-		ObjectMapper mapper,
-		ClientRouting routing,
-		String historyTable,
-		Supplier<String> idGenerator,
-		int batchWriteSize,
-		int maxRetry,
-		boolean globalEnabled,
-		boolean hash,
-		String classPath,
-		String parallelHashIndex,
-		boolean retainOverlayDeletes
-	) {
 		this.mapper = mapper;
 		this.routing = routing;
-		this.retainOverlayDeletes = retainOverlayDeletes;
 		this.historyTable = historyTable;
 		this.idGenerator = idGenerator;
 		this.batchWriteSize = batchWriteSize;
@@ -245,7 +227,7 @@ public class DynamoDb extends DatabaseDriver {
 		}
 
 		String sourceTable = getSourceTable(entity);
-		if (sourceTable.equals(routing.writableTable()) && !(retainOverlayDeletes && routing.tables().size() > 1)) {
+		if (sourceTable.equals(routing.writableTable()) && !routing.retainOverlayDeletes()) {
 			Map<String, AttributeValue> key = mapWithKeys(organisationId, entity);
 
 			return routing

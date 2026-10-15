@@ -208,6 +208,7 @@ final class DynamoDbTableClientsTest {
 				assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().clientRouting(new ClientRouting(tables)));
 				assertThrows(IllegalArgumentException.class, () -> new ClientRouting(tables));
 			}
+			assertThrows(IllegalArgumentException.class, () -> ClientRouting.localOverlay(List.of(table)));
 		}
 	}
 
@@ -407,8 +408,7 @@ final class DynamoDbTableClientsTest {
 		return DynamoDbManager
 			.builder()
 			.objectMapper(new ObjectMapper())
-			.clientRouting(new ClientRouting(List.of(tables)))
-			.retainOverlayDeletes(retainOverlayDeletes)
+			.clientRouting(retainOverlayDeletes ? ClientRouting.localOverlay(List.of(tables)) : new ClientRouting(List.of(tables)))
 			.build();
 	}
 
