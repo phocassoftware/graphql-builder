@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import tools.jackson.databind.ObjectMapper;
 import com.phocassoftware.graphql.database.manager.Table;
+import com.phocassoftware.graphql.database.manager.annotations.GlobalIndex;
 import com.phocassoftware.graphql.database.manager.RevisionMismatchException;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbClientManager;
 import com.phocassoftware.graphql.database.manager.dynamo.DynamoDbManager;
@@ -37,7 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-final class DynamoDbTableClientsTest {
+public final class DynamoDbTableClientsTest {
 	@Test
 	void routesSeedReadsAndOverlayWritesToSeparateClients() throws Exception {
 		try (var seedServer = LocalDynamoDbServer.start(); var overlayServer = LocalDynamoDbServer.start()) {
@@ -152,6 +153,63 @@ final class DynamoDbTableClientsTest {
 			var items = server.client().scan(request -> request.tableName("overlay")).items();
 			assertEquals(1, items.size());
 			assertTrue(items.getFirst().get("deleted").bool());
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(booleans = { false, true })
+	void globalIndexResolvesOverridesAndDeletionMarkers(boolean separateClients) throws Exception {
+		try (var seedServer = LocalDynamoDbServer.start(); var localServer = LocalDynamoDbServer.start()) {
+			var writableServer = separateClients ? localServer : seedServer;
+			seedServer.createEntityTable("seed");
+			writableServer.createEntityTable("overlay");
+			var seedClient = new DynamoDbClientManager(List.of("seed"), seedServer.asyncClient());
+			var localClient = new DynamoDbClientManager(List.of("overlay"), writableServer.asyncClient());
+			var seed = manager(seedClient).getVirtualDatabase("org");
+			var overlay = manager(true, seedClient, localClient).getVirtualDatabase("org");
+			var original = seed.put(new Entry("old"));
+			seed.put(new Entry("untouched"));
+
+			var changed = overlay.get(Entry.class, original.getId());
+			changed.setName("new");
+			overlay.put(changed);
+			assertTrue(overlay.queryGlobal(Entry.class, "old").isEmpty());
+			assertEquals(1, overlay.queryGlobal(Entry.class, "new").size());
+			assertEquals(1, overlay.queryGlobal(Entry.class, "untouched").size());
+
+			overlay.delete(overlay.get(Entry.class, original.getId()), true);
+			assertTrue(manager(true, seedClient, localClient).getVirtualDatabase("org").queryGlobal(Entry.class, "old").isEmpty());
+			assertTrue(manager(true, seedClient, localClient).getVirtualDatabase("org").queryGlobal(Entry.class, "new").isEmpty());
+			assertEquals(1, seed.queryGlobal(Entry.class, "old").size());
+		}
+	}
+
+	@Test
+	void limitedQueriesSkipDeletionMarkers() throws Exception {
+		try (var server = LocalDynamoDbServer.start()) {
+			server.createEntityTable("seed");
+			server.createEntityTable("overlay");
+			var seedClient = new DynamoDbClientManager(List.of("seed"), server.asyncClient());
+			var localClient = new DynamoDbClientManager(List.of("overlay"), server.asyncClient());
+			var seed = manager(seedClient).getVirtualDatabase("org");
+			var overlay = manager(true, seedClient, localClient).getVirtualDatabase("org");
+			var first = new Entry("first");
+			first.setId("a");
+			seed.put(first);
+			var second = new Entry("second");
+			second.setId("b");
+			seed.put(second);
+			overlay.delete(overlay.get(Entry.class, "a"), true);
+
+			var result = overlay.query(Entry.class, query -> query.limit(1));
+			assertEquals(1, result.size());
+			assertEquals("b", result.getFirst().getId());
+
+			var localOnly = manager(true, localClient).getVirtualDatabase("org");
+			var local = new Entry("later");
+			local.setId("c");
+			localOnly.put(local);
+			assertEquals("c", localOnly.query(Entry.class, query -> query.limit(1)).getFirst().getId());
 		}
 	}
 
@@ -425,7 +483,7 @@ final class DynamoDbTableClientsTest {
 			.build();
 	}
 
-	static class Entry extends Table {
+	public static class Entry extends Table {
 		private String name;
 
 		public Entry() {}
@@ -434,6 +492,7 @@ final class DynamoDbTableClientsTest {
 			this.name = name;
 		}
 
+		@GlobalIndex
 		public String getName() {
 			return name;
 		}

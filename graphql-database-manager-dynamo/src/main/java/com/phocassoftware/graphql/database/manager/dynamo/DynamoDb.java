@@ -764,11 +764,39 @@ public class DynamoDb extends DatabaseDriver {
 					}
 				);
 		}
-		return future.thenApply(results -> {
-			var flattener = Flattener.create(routing.tableNames(), true);
-			results.forEach(list -> flattener.addItems(list));
-			return flattener.results(mapper, type);
+		return future.thenCompose(results -> {
+			// An override may have changed its index value, and a deletion marker has no
+			// index value at all. Resolve every index hit through the table stack.
+			var keys = results
+				.stream()
+				.flatMap(List::stream)
+				.map(item -> Map.of("organisationId", item.getItem().get("organisationId"), "id", item.getItem().get("id")))
+				.distinct()
+				.toList();
+			return CompletableFutureUtil
+				.sequence(keys.stream().map(key -> queryGlobalCurrent(type, value, key)))
+				.thenApply(lists -> lists.stream().flatMap(List::stream).toList());
 		});
+	}
+
+	private <T extends Table> CompletableFuture<List<T>> queryGlobalCurrent(Class<T> type, String value, Map<String, AttributeValue> key) {
+		return CompletableFutureUtil
+			.sequence(
+				routing
+					.tables()
+					.stream()
+					.map(
+						table -> table
+							.client()
+							.getItem(request -> request.tableName(table.name()).key(key).consistentRead(true))
+							.thenApply(response -> response.item().isEmpty() ? null : new DynamoItem(table.name(), response.item()))
+					)
+			)
+			.thenApply(items -> {
+				var flattener = Flattener.create(routing.tableNames(), true);
+				items.stream().filter(java.util.Objects::nonNull).forEach(flattener::addItem);
+				return flattener.results(mapper, type).stream().filter(item -> value.equals(TableUtil.getSecondaryGlobal(item))).toList();
+			});
 	}
 
 	private CompletableFuture<List<DynamoItem>> queryGlobal(TableClient table, AttributeValue id) {
@@ -883,7 +911,7 @@ public class DynamoDb extends DatabaseDriver {
 			}
 		}
 
-		var s = new DynamoQuerySubscriber(table.name(), query.getLimit());
+		var s = new DynamoQuerySubscriber(table.name());
 		Boolean finalConsistentRead = consistentRead;
 		String finalIndex = index;
 		table
@@ -904,10 +932,6 @@ public class DynamoDb extends DatabaseDriver {
 						}
 
 						b.keyConditionExpression(conditionalExpression);
-
-						if (query.getLimit() != null) {
-							b.limit(query.getLimit());
-						}
 
 						if (query.getAfter() != null) {
 							var start = mapWithKeys(organisationId, query.getType(), query.getAfter());
