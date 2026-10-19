@@ -43,16 +43,8 @@ public final class LocalDynamoDbServer implements AutoCloseable {
 		DynamoDbInitializer.createTable(client, name);
 	}
 
-	public void createHistoryTable(String name) throws Exception {
-		DynamoDbInitializer.createHistoryTable(client, name);
-	}
-
 	public DynamoDbAsyncClient asyncClient() {
 		return asyncClient;
-	}
-
-	public DynamoDbClient client() {
-		return client;
 	}
 
 	@Override

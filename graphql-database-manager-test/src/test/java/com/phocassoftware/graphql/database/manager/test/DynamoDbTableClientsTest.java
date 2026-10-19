@@ -133,11 +133,10 @@ final class DynamoDbTableClientsTest {
 	}
 
 	@Test
-	void validatesTableClientsForBothManagerAndDirectDriver() throws Exception {
+	void rejectsEmptyAndDuplicateTableClientRouting() throws Exception {
 		try (var server = LocalDynamoDbServer.start()) {
 			var table = new DynamoDbClientManager(List.of("table"), server.asyncClient());
 			for (var tables : List.of(List.<DynamoDbClientManager>of(), List.of(table, table))) {
-				assertThrows(IllegalArgumentException.class, () -> DynamoDbManager.builder().clientRouting(new ClientRouting(tables)));
 				assertThrows(IllegalArgumentException.class, () -> new ClientRouting(tables));
 			}
 		}
@@ -291,7 +290,6 @@ final class DynamoDbTableClientsTest {
 			names.clear();
 			assertEquals(List.of("seed", "overlay"), clientManager.tableNames());
 			assertEquals("overlay", clientManager.writableTable());
-			assertThrows(UnsupportedOperationException.class, () -> clientManager.tables().clear());
 			assertThrows(UnsupportedOperationException.class, () -> clientManager.tables().clear());
 			assertThrows(IllegalArgumentException.class, () -> ClientRouting.shared(List.of(), server.asyncClient()));
 			assertThrows(IllegalArgumentException.class, () -> ClientRouting.shared(List.of("same", "same"), server.asyncClient()));
