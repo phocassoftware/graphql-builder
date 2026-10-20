@@ -21,7 +21,7 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 /** Client groups in overlay order; the last table receives writes. */
-public final class ClientRouting {
+public sealed class ClientRouting permits ClientRouting.LocalOverlayRouting {
 	public record TableClient(String name, DynamoDbAsyncClient client) {}
 
 	private final List<DynamoDbClientManager> clients;
@@ -36,6 +36,17 @@ public final class ClientRouting {
 			.toList();
 		var tables = tableNames();
 		Preconditions.checkArgument(tables.stream().distinct().count() == tables.size(), "Table client names must be unique");
+	}
+
+	/** Retain deletion markers in the writable table to keep seed entities hidden. */
+	public static ClientRouting localOverlay(List<DynamoDbClientManager> clients) {
+		return new LocalOverlayRouting(clients);
+	}
+
+	static final class LocalOverlayRouting extends ClientRouting {
+		private LocalOverlayRouting(List<DynamoDbClientManager> clients) {
+			super(clients);
+		}
 	}
 
 	public static ClientRouting shared(List<String> tables, DynamoDbAsyncClient client) {
