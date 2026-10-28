@@ -114,6 +114,20 @@ public abstract class DatabaseDriver {
 		entity.setSource(sourceTable, links, sourceOrganisationId);
 	}
 
+	protected <T extends Table> void setSource(
+		final T entity,
+		final String sourceTable,
+		final String revisionTable,
+		final Map<String, Set<String>> links,
+		final String sourceOrganisationId
+	) {
+		entity.setSource(sourceTable, revisionTable, links, sourceOrganisationId);
+	}
+
+	protected <T extends Table> String getRevisionTable(final T entity) {
+		return entity.getRevisionTable();
+	}
+
 	protected <T extends Table> String getSourceTable(final T entity) {
 		return entity.getSourceTable();
 	}
