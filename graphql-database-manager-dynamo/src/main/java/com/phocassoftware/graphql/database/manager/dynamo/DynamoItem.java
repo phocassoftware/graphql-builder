@@ -24,7 +24,6 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 public class DynamoItem implements Comparable<DynamoItem> {
 
 	private final String table;
-	private final String sourceTable;
 	private final Map<String, AttributeValue> item;
 	private final String id;
 
@@ -32,12 +31,7 @@ public class DynamoItem implements Comparable<DynamoItem> {
 	private String organisationId;
 
 	public DynamoItem(String table, Map<String, AttributeValue> item) {
-		this(table, table, item);
-	}
-
-	DynamoItem(String table, String sourceTable, Map<String, AttributeValue> item) {
 		this.table = table;
-		this.sourceTable = sourceTable;
 		this.item = item;
 
 		this.links = new HashMap<>();
@@ -85,13 +79,9 @@ public class DynamoItem implements Comparable<DynamoItem> {
 			if (revision != null) {
 				t.setRevision(Long.parseLong(revision.n()));
 			}
-			TableAccess.setTableSource(t, sourceTable, this.table, links, organisationId);
+			TableAccess.setTableSource(t, this.table, links, organisationId);
 		}
 		return table;
-	}
-
-	String getSourceTable() {
-		return sourceTable;
 	}
 
 	public String getTable() {

@@ -24,16 +24,6 @@ public interface TableAccess {
 		table.setSource(sourceTable, links, sourceOrganisationId);
 	}
 
-	public static <T extends Table> void setTableSource(
-		final T table,
-		final String sourceTable,
-		final String revisionTable,
-		final Map<String, Set<String>> links,
-		final String sourceOrganisationId
-	) {
-		table.setSource(sourceTable, revisionTable, links, sourceOrganisationId);
-	}
-
 	public static <T extends Table> String getTableSourceOrganisation(final T table) {
 		return table.getSourceOrganisationId();
 	}

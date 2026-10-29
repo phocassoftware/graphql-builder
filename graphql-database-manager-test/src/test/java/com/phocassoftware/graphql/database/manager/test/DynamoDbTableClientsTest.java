@@ -145,48 +145,8 @@ public final class DynamoDbTableClientsTest {
 		}
 	}
 
-	@ParameterizedTest
-	@ValueSource(booleans = { false, true })
-	void inheritedLinkUpdatesKeepLocalRevisionChecks(boolean saveOverrideFirst) throws Exception {
-		try (var server = LocalDynamoDbServer.start()) {
-			server.createEntityTable("seed");
-			server.createEntityTable("overlay");
-			var seedClient = new DynamoDbClientManager(List.of("seed"), server.asyncClient());
-			var localClient = new DynamoDbClientManager(List.of("overlay"), server.asyncClient());
-			var seed = manager(seedClient).getVirtualDatabase("org");
-			var original = seed.put(new Entry("seed"));
-			var target = seed.put(new Entry("target"));
-			var overlay = DynamoDbManager
-				.builder()
-				.objectMapper(new ObjectMapper())
-				.clientRouting(new ClientRouting(List.of(seedClient, localClient)))
-				.classPath(Entry.class.getPackageName())
-				.build()
-				.getVirtualDatabase("org");
-			var current = overlay.get(Entry.class, original.getId());
-			if (saveOverrideFirst) {
-				current.setName("override");
-				overlay.put(current);
-			}
-			overlay.link(current, Entry.class, target.getId());
-			var stale = manager(seedClient, localClient).getVirtualDatabase("org").get(Entry.class, original.getId());
-			current.setName("latest");
-			overlay.put(current);
-
-			var linkFailure = assertThrows(CompletionException.class, () -> overlay.links(stale, Entry.class, List.of()));
-			assertTrue(linkFailure.getCause() instanceof RevisionMismatchException);
-			var deleteFailure = assertThrows(CompletionException.class, () -> overlay.delete(stale, true));
-			assertTrue(deleteFailure.getCause() instanceof RevisionMismatchException);
-			assertEquals("latest", manager(seedClient, localClient).getVirtualDatabase("org").get(Entry.class, original.getId()).getName());
-
-			overlay.delete(manager(seedClient, localClient).getVirtualDatabase("org").get(Entry.class, original.getId()), true);
-			assertFalse(manager(seedClient, localClient).getVirtualDatabase("org").getOptional(Entry.class, original.getId()).isPresent());
-			assertEquals("seed", manager(seedClient).getVirtualDatabase("org").get(Entry.class, original.getId()).getName());
-		}
-	}
-
 	@Test
-	void deletingQueryResultUsesLowestExistingTableAcrossThreeLayers() throws Exception {
+	void deletingQueryResultKeepsAllParentLayersHidden() throws Exception {
 		try (var server = LocalDynamoDbServer.start()) {
 			for (var name : List.of("seed", "middle", "overlay")) {
 				server.createEntityTable(name);
@@ -205,7 +165,7 @@ public final class DynamoDbTableClientsTest {
 			for (var entry : overlay.query(Entry.class)) {
 				entry.setName("local override");
 				overlay.put(entry);
-				overlay.put(entry); // Origin must survive repeated saves of the same instance.
+				overlay.put(entry); // Repeated saves must still check the writable row revision.
 			}
 			for (var entry : manager(seedClient, middleClient, localClient).getVirtualDatabase("org").query(Entry.class)) {
 				assertEquals("local override", entry.getName());
@@ -219,7 +179,7 @@ public final class DynamoDbTableClientsTest {
 	}
 
 	@Test
-	void localOnlyRowsArePhysicallyDeletedEvenWithSeedTable() throws Exception {
+	void layeredDeletionRetainsMarkerForLocalOnlyRows() throws Exception {
 		try (var server = LocalDynamoDbServer.start()) {
 			server.createEntityTable("seed");
 			server.createEntityTable("overlay");
@@ -229,7 +189,10 @@ public final class DynamoDbTableClientsTest {
 			var created = overlay.put(new Entry("local only"));
 			var reloaded = manager(seedClient, localClient).getVirtualDatabase("org").get(Entry.class, created.getId());
 			overlay.delete(reloaded, true);
-			assertTrue(server.client().scan(request -> request.tableName("overlay")).items().isEmpty());
+			var items = server.client().scan(request -> request.tableName("overlay")).items();
+			assertEquals(1, items.size());
+			assertTrue(items.getFirst().get("deleted").bool());
+			assertFalse(manager(seedClient, localClient).getVirtualDatabase("org").getOptional(Entry.class, created.getId()).isPresent());
 		}
 	}
 

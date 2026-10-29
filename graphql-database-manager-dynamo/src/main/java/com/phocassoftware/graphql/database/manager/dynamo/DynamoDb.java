@@ -227,7 +227,7 @@ public class DynamoDb extends DatabaseDriver {
 		}
 
 		String sourceTable = getSourceTable(entity);
-		if (sourceTable.equals(routing.writableTable())) {
+		if (sourceTable.equals(routing.writableTable()) && routing.tableNames().size() == 1) {
 			Map<String, AttributeValue> key = mapWithKeys(organisationId, entity);
 
 			return routing
@@ -270,7 +270,7 @@ public class DynamoDb extends DatabaseDriver {
 			return routing
 				.writableClient()
 				.putItem(request -> request.tableName(routing.writableTable()).item(item).applyMutation(mutator -> {
-					if (routing.writableTable().equals(getRevisionTable(entity))) {
+					if (sourceTable.equals(routing.writableTable())) {
 						if (entity.getRevision() == 0) {
 							mutator.conditionExpression("attribute_not_exists(revision)");
 						} else {
@@ -457,7 +457,7 @@ public class DynamoDb extends DatabaseDriver {
 			});
 
 		item.put("links", AttributeValue.builder().m(links).build());
-		updateSource(organisationId, entity);
+		setSource(entity, routing.writableTable(), getLinks(entity), organisationId);
 
 		String secondaryOrganisation = TableUtil.getSecondaryOrganisation(entity);
 		String secondaryGlobal = TableUtil.getSecondaryGlobal(entity);
@@ -484,17 +484,9 @@ public class DynamoDb extends DatabaseDriver {
 		return WriteRequest.builder().putRequest(builder -> builder.item(item)).build();
 	}
 
-	private <T extends Table> void updateSource(String organisationId, T entity) {
-		var sourceTable = getSourceTable(entity);
-		if (sourceTable == null || !organisationId.equals(getSourceOrganisationId(entity)) || !routing.tableNames().contains(sourceTable)) {
-			sourceTable = routing.writableTable();
-		}
-		setSource(entity, sourceTable, routing.writableTable(), getLinks(entity), organisationId);
-	}
-
 	private <T extends Table> CompletableFuture<T> put(String organisationId, T entity, boolean check, boolean updateEntity) {
 		final long revision = entity.getRevision();
-		String revisionTable = getRevisionTable(entity);
+		String sourceTable = getSourceTable(entity);
 		var item = buildPutEntity(organisationId, entity, updateEntity);
 
 		return routing
@@ -507,7 +499,7 @@ public class DynamoDb extends DatabaseDriver {
 						if (check) {
 							String sourceOrganisationId = getSourceOrganisationId(entity);
 
-							if (revisionTable != null && !revisionTable.equals(routing.writableTable()) || !sourceOrganisationId.equals(organisationId)
+							if (sourceTable != null && !sourceTable.equals(routing.writableTable()) || !sourceOrganisationId.equals(organisationId)
 								|| revision == 0) { // Entries may predate revision tracking.
 								mutator.conditionExpression("attribute_not_exists(revision)");
 							} else {
@@ -1314,11 +1306,11 @@ public class DynamoDb extends DatabaseDriver {
 
 		String extraConditions;
 
-		String revisionTable = getRevisionTable(entity);
+		String sourceTable = getSourceTable(entity);
 		String sourceOrganisationId = getSourceOrganisationId(entity);
 		// revision checks don't really work when reading from one env and writing to another, or read from global write to organisation.
 		// revision would only practically be empty if reading object before revision concept is present
-		if (routing.writableTable().equals(revisionTable) && sourceOrganisationId.equals(organisationId) && entity.getRevision() != 0) {
+		if (sourceTable.equals(routing.writableTable()) && sourceOrganisationId.equals(organisationId) && entity.getRevision() != 0) {
 			values.put(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build());
 			extraConditions = " AND revision = :revision";
 		} else {
@@ -1387,7 +1379,6 @@ public class DynamoDb extends DatabaseDriver {
 		return destination
 			.thenApply(response -> {
 				entity.setRevision(Long.parseLong(response.attributes().get("revision").n()));
-				updateSource(organisationId, entity);
 				return entity;
 			})
 			.exceptionally(failure -> {
@@ -1527,9 +1518,9 @@ public class DynamoDb extends DatabaseDriver {
 					.updateExpression("SET links = :val ADD revision :revisionIncrement")
 					.returnValues(ReturnValue.UPDATED_NEW)
 					.applyMutation(mutator -> {
-						String revisionTable = getRevisionTable(entity);
+						String sourceTable = getSourceTable(entity);
 						// revision checks don't really work when reading from one env and writing to another.
-						if (revisionTable != null && !revisionTable.equals(routing.writableTable())) {
+						if (sourceTable != null && !sourceTable.equals(routing.writableTable())) {
 							return;
 						}
 						String sourceOrganisationId = getSourceOrganisationId(entity);
@@ -1547,7 +1538,6 @@ public class DynamoDb extends DatabaseDriver {
 			)
 			.thenApply(response -> {
 				entity.setRevision(Long.parseLong(response.attributes().get("revision").n()));
-				updateSource(organisationId, entity);
 				return entity;
 			})
 			.exceptionally(failure -> {

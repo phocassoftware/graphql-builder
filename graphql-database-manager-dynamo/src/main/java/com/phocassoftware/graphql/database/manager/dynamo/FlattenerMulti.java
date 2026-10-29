@@ -71,11 +71,7 @@ public final class FlattenerMulti extends Flattener {
 		if (item.get("item") == null) {
 			item.put("item", existing.getItem().get("item"));
 		}
-		// Keep the lowest source independently of the table supplying values and revision.
-		var sourceTable = tables.indexOf(existing.getSourceTable()) < tables.indexOf(replace.getSourceTable())
-			? existing.getSourceTable()
-			: replace.getSourceTable();
-		var toReturn = new DynamoItem(replace.getTable(), sourceTable, item);
+		var toReturn = new DynamoItem(replace.getTable(), item);
 		for (var entry : existing.getLinks().entrySet()) {
 			var current = toReturn.getLinks().get(entry.getKey());
 			if (current == null) {
