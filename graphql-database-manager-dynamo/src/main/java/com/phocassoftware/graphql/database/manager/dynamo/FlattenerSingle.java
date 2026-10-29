@@ -60,6 +60,11 @@ public final class FlattenerSingle extends Flattener {
 	}
 
 	public <T extends Table> List<T> results(ObjectMapper mapper, Class<T> type, Optional<Integer> limit) {
-		return order.stream().limit(limit.orElse(Integer.MAX_VALUE)).map(t -> t.convertTo(mapper, type)).collect(Collectors.toList());
+		return order
+			.stream()
+			.filter(item -> !item.isDeleted())
+			.limit(limit.orElse(Integer.MAX_VALUE))
+			.map(t -> t.convertTo(mapper, type))
+			.collect(Collectors.toList());
 	}
 }

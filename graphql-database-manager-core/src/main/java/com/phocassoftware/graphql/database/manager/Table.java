@@ -30,8 +30,13 @@ public abstract class Table {
 	private Instant createdAt;
 	private Instant updatedAt;
 
+	// Lowest table containing this entity; deleting an inherited entity must hide its parents.
 	@JsonIgnore
 	private String sourceTable;
+
+	// Table supplying the current values and revision, used for concurrency checks.
+	@JsonIgnore
+	private String revisionTable;
 
 	@JsonIgnore
 	private String sourceOrganistaionId;
@@ -94,7 +99,17 @@ public abstract class Table {
 		return sourceTable;
 	}
 
+	@JsonIgnore
+	@GraphQLIgnore
+	String getRevisionTable() {
+		return revisionTable;
+	}
+
 	void setSource(String sourceTable, Map<String, Set<String>> links, String sourceOrganisationId) {
+		setSource(sourceTable, sourceTable, links, sourceOrganisationId);
+	}
+
+	void setSource(String sourceTable, String revisionTable, Map<String, Set<String>> links, String sourceOrganisationId) {
 		// so bad data does not cause error
 		if (createdAt == null) {
 			createdAt = Instant.MIN;
@@ -103,6 +118,7 @@ public abstract class Table {
 			updatedAt = Instant.MIN;
 		}
 		this.sourceTable = sourceTable;
+		this.revisionTable = revisionTable;
 		this.links = links;
 		this.sourceOrganistaionId = sourceOrganisationId;
 	}

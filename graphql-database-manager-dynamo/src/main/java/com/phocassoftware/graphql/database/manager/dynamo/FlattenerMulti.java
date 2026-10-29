@@ -71,7 +71,11 @@ public final class FlattenerMulti extends Flattener {
 		if (item.get("item") == null) {
 			item.put("item", existing.getItem().get("item"));
 		}
-		var toReturn = new DynamoItem(replace.getTable(), item);
+		// Keep the lowest source independently of the table supplying values and revision.
+		var sourceTable = tables.indexOf(existing.getSourceTable()) < tables.indexOf(replace.getSourceTable())
+			? existing.getSourceTable()
+			: replace.getSourceTable();
+		var toReturn = new DynamoItem(replace.getTable(), sourceTable, item);
 		for (var entry : existing.getLinks().entrySet()) {
 			var current = toReturn.getLinks().get(entry.getKey());
 			if (current == null) {
@@ -87,6 +91,11 @@ public final class FlattenerMulti extends Flattener {
 	public <T extends Table> List<T> results(ObjectMapper mapper, Class<T> type, Optional<Integer> limit) {
 		var items = new ArrayList<DynamoItem>(lookup.values());
 		Collections.sort(items);
-		return items.stream().limit(limit.orElse(Integer.MAX_VALUE)).map(t -> t.convertTo(mapper, type)).collect(Collectors.toList());
+		return items
+			.stream()
+			.filter(item -> !item.isDeleted())
+			.limit(limit.orElse(Integer.MAX_VALUE))
+			.map(t -> t.convertTo(mapper, type))
+			.collect(Collectors.toList());
 	}
 }
