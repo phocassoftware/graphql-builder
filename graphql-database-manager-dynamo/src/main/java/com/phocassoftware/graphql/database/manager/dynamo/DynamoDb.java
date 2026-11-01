@@ -263,15 +263,31 @@ public class DynamoDb extends DatabaseDriver {
 					throw new RuntimeException(failure);
 				});
 		} else {
-			// we mark as deleted not actual delete
+			// Keep the seed hidden after removing a local override.
 			Map<String, AttributeValue> item = mapWithKeys(organisationId, entity, true);
 			item.put("deleted", AttributeValue.builder().bool(true).build());
 
 			return routing
 				.writableClient()
-				.putItem(request -> request.tableName(routing.writableTable()).item(item))
+				.putItem(request -> request.tableName(routing.writableTable()).item(item).applyMutation(mutator -> {
+					if (routing.writableTable().equals(getRevisionTable(entity))) {
+						if (entity.getRevision() == 0) {
+							mutator.conditionExpression("attribute_not_exists(revision)");
+						} else {
+							mutator.expressionAttributeValues(Map.of(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build()));
+							mutator.conditionExpression("revision = :revision");
+						}
+					}
+				}))
 				.thenApply(response -> {
 					return entity;
+				})
+				.exceptionally(failure -> {
+					if (failure.getCause() instanceof ConditionalCheckFailedException) {
+						throw new RevisionMismatchException(failure.getCause());
+					}
+					Throwables.throwIfUnchecked(failure);
+					throw new RuntimeException(failure);
 				});
 		}
 	}
@@ -441,7 +457,7 @@ public class DynamoDb extends DatabaseDriver {
 			});
 
 		item.put("links", AttributeValue.builder().m(links).build());
-		setSource(entity, routing.writableTable(), getLinks(entity), organisationId);
+		updateSource(organisationId, entity);
 
 		String secondaryOrganisation = TableUtil.getSecondaryOrganisation(entity);
 		String secondaryGlobal = TableUtil.getSecondaryGlobal(entity);
@@ -468,9 +484,17 @@ public class DynamoDb extends DatabaseDriver {
 		return WriteRequest.builder().putRequest(builder -> builder.item(item)).build();
 	}
 
+	private <T extends Table> void updateSource(String organisationId, T entity) {
+		var sourceTable = getSourceTable(entity);
+		if (sourceTable == null || !organisationId.equals(getSourceOrganisationId(entity)) || !routing.tableNames().contains(sourceTable)) {
+			sourceTable = routing.writableTable();
+		}
+		setSource(entity, sourceTable, routing.writableTable(), getLinks(entity), organisationId);
+	}
+
 	private <T extends Table> CompletableFuture<T> put(String organisationId, T entity, boolean check, boolean updateEntity) {
 		final long revision = entity.getRevision();
-		String sourceTable = getSourceTable(entity);
+		String revisionTable = getRevisionTable(entity);
 		var item = buildPutEntity(organisationId, entity, updateEntity);
 
 		return routing
@@ -483,7 +507,7 @@ public class DynamoDb extends DatabaseDriver {
 						if (check) {
 							String sourceOrganisationId = getSourceOrganisationId(entity);
 
-							if (sourceTable != null && !sourceTable.equals(routing.writableTable()) || !sourceOrganisationId.equals(organisationId)
+							if (revisionTable != null && !revisionTable.equals(routing.writableTable()) || !sourceOrganisationId.equals(organisationId)
 								|| revision == 0) { // Entries may predate revision tracking.
 								mutator.conditionExpression("attribute_not_exists(revision)");
 							} else {
@@ -748,11 +772,39 @@ public class DynamoDb extends DatabaseDriver {
 					}
 				);
 		}
-		return future.thenApply(results -> {
-			var flattener = Flattener.create(routing.tableNames(), true);
-			results.forEach(list -> flattener.addItems(list));
-			return flattener.results(mapper, type);
+		return future.thenCompose(results -> {
+			// An override may have changed its index value, and a deletion marker has no
+			// index value at all. Resolve every index hit through the table stack.
+			var keys = results
+				.stream()
+				.flatMap(List::stream)
+				.map(item -> Map.of("organisationId", item.getItem().get("organisationId"), "id", item.getItem().get("id")))
+				.distinct()
+				.toList();
+			return CompletableFutureUtil
+				.sequence(keys.stream().map(key -> queryGlobalCurrent(type, value, key)))
+				.thenApply(lists -> lists.stream().flatMap(List::stream).toList());
 		});
+	}
+
+	private <T extends Table> CompletableFuture<List<T>> queryGlobalCurrent(Class<T> type, String value, Map<String, AttributeValue> key) {
+		return CompletableFutureUtil
+			.sequence(
+				routing
+					.tables()
+					.stream()
+					.map(
+						table -> table
+							.client()
+							.getItem(request -> request.tableName(table.name()).key(key).consistentRead(true))
+							.thenApply(response -> response.item().isEmpty() ? null : new DynamoItem(table.name(), response.item()))
+					)
+			)
+			.thenApply(items -> {
+				var flattener = Flattener.create(routing.tableNames(), true);
+				items.stream().filter(java.util.Objects::nonNull).forEach(flattener::addItem);
+				return flattener.results(mapper, type).stream().filter(item -> value.equals(TableUtil.getSecondaryGlobal(item))).toList();
+			});
 	}
 
 	private CompletableFuture<List<DynamoItem>> queryGlobal(TableClient table, AttributeValue id) {
@@ -867,7 +919,7 @@ public class DynamoDb extends DatabaseDriver {
 			}
 		}
 
-		var s = new DynamoQuerySubscriber(table.name(), query.getLimit());
+		var s = new DynamoQuerySubscriber(table.name());
 		Boolean finalConsistentRead = consistentRead;
 		String finalIndex = index;
 		table
@@ -888,10 +940,6 @@ public class DynamoDb extends DatabaseDriver {
 						}
 
 						b.keyConditionExpression(conditionalExpression);
-
-						if (query.getLimit() != null) {
-							b.limit(query.getLimit());
-						}
 
 						if (query.getAfter() != null) {
 							var start = mapWithKeys(organisationId, query.getType(), query.getAfter());
@@ -1266,11 +1314,11 @@ public class DynamoDb extends DatabaseDriver {
 
 		String extraConditions;
 
-		String sourceTable = getSourceTable(entity);
+		String revisionTable = getRevisionTable(entity);
 		String sourceOrganisationId = getSourceOrganisationId(entity);
 		// revision checks don't really work when reading from one env and writing to another, or read from global write to organisation.
 		// revision would only practically be empty if reading object before revision concept is present
-		if (sourceTable.equals(routing.writableTable()) && sourceOrganisationId.equals(organisationId) && entity.getRevision() != 0) {
+		if (routing.writableTable().equals(revisionTable) && sourceOrganisationId.equals(organisationId) && entity.getRevision() != 0) {
 			values.put(":revision", AttributeValue.builder().n(Long.toString(entity.getRevision())).build());
 			extraConditions = " AND revision = :revision";
 		} else {
@@ -1339,6 +1387,7 @@ public class DynamoDb extends DatabaseDriver {
 		return destination
 			.thenApply(response -> {
 				entity.setRevision(Long.parseLong(response.attributes().get("revision").n()));
+				updateSource(organisationId, entity);
 				return entity;
 			})
 			.exceptionally(failure -> {
@@ -1478,9 +1527,9 @@ public class DynamoDb extends DatabaseDriver {
 					.updateExpression("SET links = :val ADD revision :revisionIncrement")
 					.returnValues(ReturnValue.UPDATED_NEW)
 					.applyMutation(mutator -> {
-						String sourceTable = getSourceTable(entity);
+						String revisionTable = getRevisionTable(entity);
 						// revision checks don't really work when reading from one env and writing to another.
-						if (sourceTable != null && !sourceTable.equals(routing.writableTable())) {
+						if (revisionTable != null && !revisionTable.equals(routing.writableTable())) {
 							return;
 						}
 						String sourceOrganisationId = getSourceOrganisationId(entity);
@@ -1498,6 +1547,7 @@ public class DynamoDb extends DatabaseDriver {
 			)
 			.thenApply(response -> {
 				entity.setRevision(Long.parseLong(response.attributes().get("revision").n()));
+				updateSource(organisationId, entity);
 				return entity;
 			})
 			.exceptionally(failure -> {
